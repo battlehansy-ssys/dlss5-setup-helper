@@ -18,7 +18,7 @@
 
 // ================================================================ 설정
 // 버전 규칙: 아래 OPTI_URL(내려받기 주소)을 바꿀 때마다 맨 뒷자리를 1 올린다.
-static const wchar_t* APP_VER  = L"1.0.0.7";
+static const wchar_t* APP_VER  = L"1.0.0.8";
 static const wchar_t* OPTI_VER = L"v0.2.0-dlssnr";
 static const wchar_t* OPTI_URL =
     L"https://github.com/Dagherbou/OptiScaler_DLSSNR/releases/download/v0.2.0-dlssnr/OptiScaler-DLSSNR-v0.2.0.zip";
@@ -840,21 +840,42 @@ static void ScanAll() {
 }
 
 // ================================================================ 게임 폴더 판단
+// 폴더 안에 exe 가 하나라도 있는가.
+// 언리얼의 Engine\Binaries\Win64 는 dll 만 들어 있는 미끼 폴더라 이것으로 걸러낸다.
+static bool DirHasExe(const std::wstring& dir) {
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW((dir + L"\\*.exe").c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    FindClose(h);
+    return true;
+}
+
+// 2026-10-01 스텔라 블레이드 제보로 고침.
+// 언리얼 게임은 <게임>\<프로젝트명>\Binaries\Win64 에 본체 exe 가 있고
+// Engine\Binaries\Win64 에는 공용 dll 만 있다.
+// 예전에는 먼저 걸리는 폴더를 그냥 반환해서 Engine 이 알파벳 순으로 SB 보다 먼저 잡혔고,
+// 그 폴더에는 exe 가 없어 "실행 파일 못 찾음" 으로 설치가 중단됐다.
+// 이제는 exe 가 들어 있는 폴더를 먼저 쓰고, Engine 은 다른 후보가 없을 때만 쓴다.
 static std::wstring ResolveExeDir(const std::wstring& dir) {
     std::wstring ue = dir + L"\\Binaries\\Win64";
     if (DirExists(ue)) return ue;
+    std::wstring engineDir, firstDir;
     WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileW((dir + L"\\*").c_str(), &fd);
     if (h != INVALID_HANDLE_VALUE) {
         do {
             std::wstring n = fd.cFileName;
             if (n == L"." || n == L"..") continue;
-            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-                std::wstring sub = dir + L"\\" + n + L"\\Binaries\\Win64";
-                if (DirExists(sub)) { FindClose(h); return sub; }
-            }
+            if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
+            std::wstring sub = dir + L"\\" + n + L"\\Binaries\\Win64";
+            if (!DirExists(sub)) continue;
+            if (LowerW(n) == L"engine") { if (engineDir.empty()) engineDir = sub; continue; }
+            if (DirHasExe(sub)) { FindClose(h); return sub; }
+            if (firstDir.empty()) firstDir = sub;
         } while (FindNextFileW(h, &fd));
         FindClose(h);
     }
+    if (!firstDir.empty()) return firstDir;
+    if (!engineDir.empty()) return engineDir;
     return dir;
 }
 static long long FileSizeOf(const std::wstring& p);
