@@ -1,0 +1,429 @@
+ 폴더||| folder
+ (아직 OptiScaler 입니다)||| (still OptiScaler)
+OptiScaler 본체|||OptiScaler main files
+신경망 모델|||Neural model
+DLSS 런타임|||DLSS runtime
+RenoDX 애드온|||RenoDX add-on
+Feeder 보조 실행 파일|||Feeder helper executable
+Feeder 셰이더|||Feeder shader
+Feeder 설정|||Feeder settings
+리세이드 프리셋|||ReShade preset
+리세이드|||ReShade
+리세이드 설정|||ReShade settings
+ 가 없습니다  (||| is missing  (
+  - %s 의 크기가 다릅니다 (%lld 이어야 하는데 %lld)|||  - %s has the wrong size (should be %lld, is %lld)
+ 가 다른 판입니다 (CRC ||| is a different version (CRC
+ 이어야 함)||| expected)
+스팀을 찾지 못했습니다.|||Steam was not found.
+스팀 설치 위치: |||Steam install location:
+게임 보관 폴더: |||Game library folder:
+  DLSS 가 들어 있는 실행 파일을 찾았습니다: |||  Found an executable that contains DLSS:
+  실행 파일은 작고 게임 본체는 dll 에 있습니다: |||  The executable is small; the game engine is in a dll:
+  그래픽 방식: Vulkan (직접 고르셨습니다)|||  Graphics API: Vulkan (chosen manually)
+  그래픽 방식: DirectX (직접 고르셨습니다)|||  Graphics API: DirectX (chosen manually)
+  그래픽 방식: Vulkan (게임 이름으로 판단했습니다)|||  Graphics API: Vulkan (decided from the game name)
+  그래픽 방식: DirectX (게임 이름으로 판단했습니다)|||  Graphics API: DirectX (decided from the game name)
+  안 되면 [진행 기록 복사]를 눌러 게시물 댓글에 붙여넣어 주세요.|||  If it does not work, press [Copy log] and paste it into a comment on the mod page.
+ 은(는) 이미 OptiScaler입니다. 새로 만들지 않고 이 파일을 갱신합니다.||| is already OptiScaler. Updating this file instead of creating a new one.
+ 은(는) 다른 프로그램이 쓰고 있어 건너뜁니다.||| is used by another program. Skipping it.
+[경고] OptiScaler.ini 를 찾지 못해 설정값을 넣지 못했습니다.|||[WARNING] OptiScaler.ini was not found, so the settings could not be written.
+  설정 %d개를 적용했습니다.|||  Applied %d settings.
+(읽기 실패)|||(read failed)
+(없음)|||(none)
+%lld 바이트  CRC |||%lld bytes  CRC
+     받아 두신 압축 파일을 열어 봅니다: |||     Opening the downloaded archive:
+받아 둔 압축에서 신경망 파일을 꺼내는 중입니다...|||Extracting the neural model from the downloaded archive...
+     이 압축은 윈도우가 바로 열지 못합니다. 마우스 오른쪽 클릭 → 압축 풀기 후 다시 눌러 주세요.|||     Windows cannot open this archive directly. Right-click -> Extract, then press the button again.
+     압축 안에서 찾았습니다.|||     Found inside the archive.
+     이 압축 안에는 없습니다.|||     Not in this archive.
+     압축을 여는 중입니다: |||     Opening archive:
+     [알림] 이 파일은 rar 형식이라 윈도우 기본 기능으로는 풀 수 없습니다.|||     [NOTE] This file is a rar archive and cannot be extracted with built-in Windows features.
+            반디집이나 7-Zip 같은 압축 프로그램이 필요합니다.|||            An archive program such as 7-Zip is needed.
+신경망 파일(nvngx_dlssnr.dll)을 찾고 있습니다.|||Looking for the neural model file (nvngx_dlssnr.dll).
+  1) 이 프로그램이 있는 폴더를 봅니다.|||  1) Checking the folder this program is in.
+     찾는 파일: |||     Looking for:
+     → 프로그램과 같은 폴더에 있습니다. 이것을 씁니다.|||     -> Found in the program folder. Using it.
+     → 세대별 파일은 없지만 nvngx_dlssnr.dll 이 있습니다. 이것을 씁니다.|||     -> No per-generation file, but nvngx_dlssnr.dll is there. Using it.
+  2) 이 게임 폴더 안을 봅니다.|||  2) Checking this game folder.
+  3) 전에 찾아 둔 위치를 봅니다.|||  3) Checking the previously found location.
+  4) 다른 게임 폴더를 봅니다.|||  4) Checking other game folders.
+신경망 파일을 찾는 중... (다른 게임 폴더)|||Looking for the neural model... (other game folders)
+  5) 다운로드 폴더와 바탕화면을 봅니다.|||  5) Checking the Downloads folder and the Desktop.
+신경망 파일을 찾는 중... (다운로드 폴더)|||Looking for the neural model... (Downloads folder)
+  6) 엔비디아 드라이버 폴더를 봅니다.|||  6) Checking the NVIDIA driver folder.
+신경망 파일을 찾는 중... (드라이버 폴더)|||Looking for the neural model... (driver folder)
+  7) 다운로드 폴더에 받아 둔 압축 파일 안을 봅니다.|||  7) Checking archives in the Downloads folder.
+  → 어디에도 없습니다. 하드디스크 전체 검색은 하지 않습니다.|||  -> Not found anywhere. The whole disk is not searched.
+     이 파일은 받으신 압축 안에 프로그램과 함께 들어 있습니다.|||     This file is included in the downloaded archive together with the program.
+     압축을 푸신 폴더에서 실행하시면 1번 단계에서 바로 찾습니다.|||     Run the program from the extracted folder and it will be found in step 1.
+  - 신경망 파일(nvngx_dlssnr.dll) 이 없습니다|||  - Neural model file (nvngx_dlssnr.dll) is missing
+  - 신경망 파일이 너무 작습니다. 복사가 덜 됐습니다|||  - Neural model file is too small. The copy is incomplete
+  - DLSS5-Feeder 애드온이 없습니다|||  - DLSS5-Feeder add-on is missing
+  - RenoDX 신경망 애드온이 없습니다|||  - RenoDX neural add-on is missing
+  - DLSS 런타임(nvngx_dlss.dll) 이 없습니다|||  - DLSS runtime (nvngx_dlss.dll) is missing
+  - DLSS 런타임이 너무 작습니다. 복사가 덜 됐습니다|||  - DLSS runtime is too small. The copy is incomplete
+  - Feeder 보조 실행 파일이 없습니다|||  - Feeder helper executable is missing
+  - DLSS5_Feed.fx 셰이더가 없습니다|||  - DLSS5_Feed.fx shader is missing
+  - 리세이드가 없습니다|||  - ReShade is missing
+  - 리세이드가 애드온을 지원하지 않는 버전입니다|||  - ReShade is a version without add-on support
+  - 프리셋에 DLSS5_Feed 효과가 꺼져 있습니다|||  - DLSS5_Feed effect is off in the preset
+  - 프리셋에 모션 벡터 효과가 꺼져 있습니다|||  - Motion vector effect is off in the preset
+  - 리세이드 효과 파일(.fx)이 없습니다|||  - No ReShade effect files (.fx)
+  - NR Style 이 2 입니다. 이대로면 다음에 게임이 안 켜집니다|||  - NR Style is 2. The game will not start next time with this value
+  - OptiScaler.ini 가 없습니다|||  - OptiScaler.ini is missing
+  - OptiScaler 폴더가 없습니다|||  - OptiScaler folder is missing
+  - nvngx.dll_dlssnr.dll 이 없습니다|||  - nvngx.dll_dlssnr.dll is missing
+  - OptiScaler 본체가 게임 폴더에 없습니다|||  - OptiScaler main dll is not in the game folder
+[실패] data 폴더가 프로그램 옆에 없습니다.|||[FAILED] The data folder is not next to the program.
+       압축을 푸신 폴더에서 실행해 주세요. 지금 위치: |||       Run the program from the extracted folder. Current location:
+이 게임에는 ReShade 가 없습니다. 같이 들어 있는 것으로 넣습니다.|||This game has no ReShade. Installing the bundled copy.
+ReShade 를 넣는 중입니다...|||Installing ReShade...
+[실패] dxgi.dll 이 이미 있는데 ReShade 가 아닙니다.|||[FAILED] dxgi.dll already exists and is not ReShade.
+       다른 프로그램이 쓰고 있어 덮어쓰면 그쪽이 망가집니다. 여기서 멈춥니다.|||       Another program uses it; overwriting would break that program. Stopping here.
+[실패] ReShade 를 넣지 못했습니다 (윈도우 오류 %lu)|||[FAILED] Could not install ReShade (Windows error %lu)
+  ReShade 를 dxgi.dll 로 넣었습니다.|||  Installed ReShade as dxgi.dll.
+  ReShade.ini 는 이미 있어 건드리지 않습니다.|||  ReShade.ini already exists; left unchanged.
+  ReShade.ini 를 넣었습니다. (Insert 키로 창이 열립니다)|||  Added ReShade.ini. (Insert opens the window)
+  reshade-shaders 는 이미 있어 건드리지 않습니다.|||  reshade-shaders already exists; left unchanged.
+  reshade-shaders 폴더는 있지만 효과 파일(.fx)이 없어 채워 넣습니다.|||  The reshade-shaders folder exists but has no effect files (.fx); filling it.
+효과 파일을 넣는 중입니다...|||Copying effect files...
+  reshade-shaders 를 넣었습니다. (파일 %d개)|||  Added reshade-shaders. (%d files)
+설치된 ReShade 를 찾았습니다: |||Found an installed ReShade:
+  → 애드온을 받지 않는 버전입니다. 이대로는 동작하지 않습니다.|||  -> This version does not support add-ons. It will not work as is.
+이미 설치된 ReShade 가 애드온을 지원하지 않는 버전입니다.|||The installed ReShade is a version without add-on support.
+reshade.me 에서 [with full add-on support] 버전으로 다시 설치해 주세요.|||Please reinstall the [with full add-on support] version from reshade.me.
+설정과 프리셋은 그대로 유지됩니다.|||Your settings and presets will be kept.
+이미 설치된 ReShade 는 이 프로그램이 건드리지 않습니다.|||This program does not change an installed ReShade.
+ReShade 버전을 바꿔 주세요|||Please change the ReShade version
+  → 애드온을 받아 주는 버전입니다. 그대로 두고 애드온만 넣습니다.|||  -> This version supports add-ons. Leaving it as is and adding the add-ons only.
+[실패] Feeder 애드온을 넣지 못했습니다 (윈도우 오류 %lu)|||[FAILED] Could not install the Feeder add-on (Windows error %lu)
+DLSS5-Feeder 애드온을 넣었습니다.|||Installed the DLSS5-Feeder add-on.
+  설정 파일은 이미 있어 건드리지 않습니다.|||  The settings file already exists; left unchanged.
+  설정 파일을 넣었습니다. 화면이 %dx%d 이라 처리 해상도를 %d%% 로 정했습니다.|||  Added the settings file. The screen is %dx%d, so the processing resolution was set to %d%%.
+     화면이 크지 않아 화질 손해 없이 그대로 돌립니다. (FSR1 되돌림은 꺼 둡니다)|||     The screen is not large, so it runs at full resolution. (FSR1 upscale-back is off)
+     4K 급 화면이라 낮춰 잡았습니다. 프레임이 남으면 dlss5-feed.cfg 에서 올리셔도 됩니다.|||     4K-class screen, so it was set lower. If you have frames to spare, you can raise it in dlss5-feed.cfg.
+  보조 실행 파일을 넣었습니다.|||  Added the helper executable.
+  셰이더를 넣었습니다: |||  Added shader:
+  프리셋에서 모션 벡터와 DLSS5_Feed 효과를 켰습니다.|||  Enabled the motion vector and DLSS5_Feed effects in the preset.
+     쓰시던 효과는 그대로 두고 앞에 두 개만 추가했습니다.|||     Your existing effects were kept; only these two were added in front.
+  [경고] 프리셋을 쓰지 못했습니다. 게임에서 직접 켜셔야 합니다.|||  [WARNING] Could not write the preset. You need to enable the effects in game.
+         리세이드 창에서 DH_UBER_MOTION_020 과 DLSS5_Feed 를 켜시고,|||         In the ReShade window, enable DH_UBER_MOTION_020 and DLSS5_Feed,
+         DH_UBER_MOTION_020 이 DLSS5_Feed 보다 위에 오게 하세요.|||         and keep DH_UBER_MOTION_020 above DLSS5_Feed.
+  [주의] 효과 파일(.fx)이 이것 하나뿐입니다. ReShade 설치가 온전하지 않을 수 있습니다.|||  [CAUTION] This is the only effect file (.fx). The ReShade installation may be incomplete.
+[실패] RenoDX 애드온을 넣지 못했습니다 (윈도우 오류 %lu)|||[FAILED] Could not install the RenoDX add-on (Windows error %lu)
+RenoDX 신경망 애드온을 넣었습니다.|||Installed the RenoDX neural add-on.
+  DLSS 런타임은 이미 있어 건드리지 않습니다.|||  The DLSS runtime already exists; left unchanged.
+  [경고] 같이 들어 있어야 할 nvngx_dlss.dll 이 없습니다.|||  [WARNING] The bundled nvngx_dlss.dll is missing.
+DLSS 런타임을 넣는 중입니다...|||Installing the DLSS runtime...
+  DLSS 런타임(nvngx_dlss.dll)을 넣었습니다.|||  Installed the DLSS runtime (nvngx_dlss.dll).
+[실패] DLSS 런타임을 넣지 못했습니다 (윈도우 오류 %lu)|||[FAILED] Could not install the DLSS runtime (Windows error %lu)
+  껐다 켜는 키를 F7 로 맞췄습니다.|||  Set the on/off key to F7.
+  껐다 켜는 키는 이미 정해져 있어 그대로 둡니다.|||  The on/off key is already set; left unchanged.
+  NR Style 이 2 로 되어 있어 0 으로 되돌렸습니다. (2 는 다음 실행 때 게임이 안 켜집니다)|||  NR Style was 2; set it back to 0. (With 2 the game does not start next time)
+Feeder 가 DLSS 호출을 만들고 RenoDX 가 신경망 패스를 겁니다.|||The Feeder creates the DLSS calls and RenoDX applies the neural pass.
+실행 파일이 있는 폴더를 찾고 있습니다...|||Looking for the folder with the game executable...
+  게임 본체가 하위 폴더에 있습니다: |||  The game executable is in a subfolder:
+  이 드라이브 여유 공간: %lld MB|||  Free space on this drive: %lld MB
+  이미 들어 있는 파일 (충돌 확인용):|||  Files already present (conflict check):
+     %-24s %lld 바이트|||     %-24s %lld bytes
+     (없음 - 깨끗한 상태입니다)|||     (none - clean)
+───── 되돌리기를 시작합니다|||───── Starting restore
+  설치 기록이 다른 폴더에 있어 그 폴더를 되돌립니다: |||  The install record is in another folder; restoring that folder:
+[실패] 이 게임이 실행 중입니다: |||[FAILED] This game is running:
+       게임을 끄고 다시 눌러 주세요. 켜져 있으면 파일이 잠겨 지울 수 없습니다.|||       Close the game and press again. Files are locked while it runs.
+게임이 아직 실행 중입니다.|||The game is still running.
+게임을 완전히 끄신 뒤 다시 [되돌리기] 를 눌러 주세요.|||Close the game completely, then press [Restore] again.
+게임을 먼저 꺼 주세요|||Please close the game first
+게임이 실행 중입니다|||The game is running
+설치 기록이 없습니다. 이 게임에는 이 프로그램으로 설치한 적이 없습니다.|||No install record. This program has not installed anything in this game.
+치워 뒀던 파일을 제자리로 돌려놓았습니다: |||Moved a set-aside file back:
+넣었던 폴더를 지웠습니다: |||Removed added folder:
+원래 파일로 되돌렸습니다: |||Restored original file:
+[경고] 되돌리지 못했습니다 (윈도우 오류 %lu): |||[WARNING] Could not restore (Windows error %lu):
+[실패] 지우지 못했습니다 (윈도우 오류 %lu): |||[FAILED] Could not delete (Windows error %lu):
+원래 폴더로 되돌렸습니다: %s (파일 %d개)|||Restored original folder: %s (%d files)
+남은 파일까지 정리했습니다. 게임 폴더가 설치 전 상태로 돌아갔습니다.|||Leftover files removed. The game folder is back to its pre-install state.
+파일 %d개를 되돌렸고, %d개는 지우지 못했습니다.|||Restored %d files; %d could not be deleted.
+파일 %d개를 원래대로 되돌렸습니다.|||Restored %d files.
+되돌리기가 제대로 됐는지 확인하는 중입니다...|||Checking that the restore worked...
+───── 확인: 넣었던 것이 모두 사라졌습니다|||───── Check: everything that was added is gone
+───── 확인: 아직 남아 있는 것이 있습니다|||───── Check: some files are still there
+되돌리기를 했지만 아직 남아 있는 것이 있습니다.|||Restore finished, but some files are still there.
+게임이나 다른 프로그램이 그 파일을 잡고 있을 수 있습니다.|||The game or another program may be holding those files.
+게임을 완전히 끄신 뒤 [되돌리기] 를 한 번 더 눌러 주세요.|||Close the game completely and press [Restore] once more.
+그래도 남으면 위 파일들을 직접 지우셔도 됩니다.|||If they remain, you can delete the files above yourself.
+되돌리기를 확인해 주세요|||Please check the restore
+───── 되돌리기를 마쳤습니다|||───── Restore finished
+되돌리기 완료|||Restore complete
+───── 설치를 시작합니다|||───── Starting installation
+이 게임이 DLSS 를 지원하는지 확인하는 중입니다...|||Checking whether this game supports DLSS...
+이 게임이 DLSS 를 지원하는지 확인하고 있습니다.|||Checking whether this game supports DLSS.
+  실행 파일: |||  Executable:
+(못 찾음)|||(not found)
+[중단] 이 폴더에서 게임 실행 파일을 찾지 못했습니다. 아무것도 넣지 않았습니다.|||[STOPPED] No game executable was found in this folder. Nothing was installed.
+       [진행 기록 복사]를 눌러 게시물 댓글에 붙여넣어 주세요.|||       Press [Copy log] and paste it into a comment on the mod page.
+이 게임의 실행 파일을 찾지 못했습니다.|||The game executable was not found.
+잘못 설치되지 않도록 아무것도 넣지 않았습니다.|||Nothing was installed, to avoid a wrong installation.
+[진행 기록 복사]를 눌러 게시물 댓글에 붙여넣어 주세요.|||Press [Copy log] and paste it into a comment on the mod page.
+설치하지 않았습니다|||Not installed
+[중단] 이 게임은 DirectX 9 게임입니다. 아무것도 넣지 않았습니다.|||[STOPPED] This is a DirectX 9 game. Nothing was installed.
+       DLSS 5 는 DirectX 11 / 12, Vulkan 게임에서만 켜집니다.|||       DLSS 5 only works in DirectX 11 / 12 and Vulkan games.
+이 게임은 DirectX 9 로 만들어진 오래된 게임입니다.|||This game uses DirectX 9.
+DLSS 5 는 DirectX 11 / 12, Vulkan 게임에서만 켜지므로|||DLSS 5 only works in DirectX 11 / 12 and Vulkan games,
+아무것도 넣지 않았습니다.|||so nothing was installed.
+지원하지 않는 게임입니다|||Unsupported game
+  → 게임에 DLSS 연결이 들어 있습니다. OptiScaler 방식으로 설치합니다.|||  -> The game contains DLSS. Installing with the OptiScaler route.
+  → 이 게임에는 DLSS 가 없습니다. ReShade + RenoDX 방식으로 설치합니다.|||  -> This game has no DLSS. Installing with the ReShade + RenoDX route.
+  → 실행 파일을 읽지 못해 판단할 수 없습니다. 기본값인 OptiScaler 방식으로 갑니다.|||  -> Could not read the executable. Using the default OptiScaler route.
+     아무 변화가 없으면 [진행 기록 복사]를 눌러 게시물 댓글에 붙여넣어 주세요.|||     If nothing changes in game, press [Copy log] and paste it into a comment on the mod page.
+다른 방식의 DLSS 5가 이미 걸려 있는지 확인하고 있습니다... (리세이드는 그대로 둡니다)|||Checking whether another DLSS 5 setup is already installed... (ReShade is left as is)
+  → 깨끗합니다. 그대로 진행합니다.|||  -> Clean. Continuing.
+  DLSS 5가 두 번 걸리지 않도록 이 파일을 백업 폴더로 옮겼습니다: |||  Moved this file to the backup folder so DLSS 5 is not applied twice:
+  [실패] |||  [FAILED]
+ 을(를) 옮기지 못했습니다. 게임이 실행 중인지 확인해 주세요.||| could not be moved. Check whether the game is running.
+파일을 옮기지 못했습니다|||Could not move a file
+  치운 파일은 백업 폴더에 그대로 있습니다. [되돌리기]를 누르면 전부 제자리로 돌아옵니다.|||  Moved files are kept in the backup folder. [Restore] puts them all back.
+이 폴더에 파일을 쓸 수 있는지 확인하고 있습니다...|||Checking that files can be written to this folder...
+[실패] 이 폴더에 파일을 쓸 수 없습니다. 권한이 막혀 있습니다.|||[FAILED] Cannot write files to this folder. Permission denied.
+       이 프로그램을 마우스 오른쪽 클릭 → [관리자 권한으로 실행] 으로 다시 해 보세요.|||       Right-click this program -> [Run as administrator] and try again.
+권한이 부족합니다|||Insufficient permissions
+  → 쓸 수 있습니다.|||  -> Writable.
+DLSS5-Feeder 를 넣는 중입니다...|||Installing DLSS5-Feeder...
+───── 설치를 마치지 못했습니다|||───── Installation did not finish
+설치 실패|||Installation failed
+이 게임은 Vulkan 입니다.|||This game uses Vulkan.
+엔비디아 Smooth Motion 을 꺼 주셔야 합니다.|||NVIDIA Smooth Motion must be turned off.
+켜져 있으면 화면의 절반만 처리되어 심하게 깜빡이는 것처럼 보입니다.|||If it is on, only half of the frames are processed and the image appears to flicker badly.
+엔비디아 앱 또는 Profile Inspector 에서 이 게임의|||Turn off Smooth Motion for this game in the NVIDIA App
+Smooth Motion 을 꺼 주세요. DirectX 게임은 켜 두셔도 됩니다.|||or NVIDIA Profile Inspector. DirectX games can keep it on.
+Smooth Motion 을 꺼 주세요|||Please turn off Smooth Motion
+  [주의] Vulkan 게임입니다. 엔비디아 Smooth Motion 을 꺼 주세요.|||  [CAUTION] Vulkan game. Please turn off NVIDIA Smooth Motion.
+         켜져 있으면 절반의 화면만 처리되어 깜빡이는 것처럼 보입니다.|||         If it is on, only half of the frames are processed and the image appears to flicker.
+         DirectX 게임은 켜 두셔도 됩니다.|||         DirectX games can keep it on.
+OptiScaler 가 프로그램과 같은 폴더에 들어 있습니다. 내려받지 않습니다.|||OptiScaler is included with the program. Not downloading.
+  위치: |||  Location:
+전에 받아 둔 파일이 있어 다시 받지 않습니다.|||A previously downloaded file exists. Not downloading again.
+전에 받다 만 파일이 있어 지우고 다시 받습니다.|||An incomplete download exists. Deleting it and downloading again.
+ 를 내려받고 있습니다. 약 130MB, 인터넷 속도에 따라 몇 분 걸립니다.||| is downloading. About 130MB; this can take a few minutes depending on your connection.
+최신 판이 있는지 확인하는 중입니다...|||Checking for the latest version...
+  최신 판 주소를 받았습니다.|||  Got the latest version address.
+  최신 판 확인에 실패해 프로그램에 적힌 주소를 씁니다.|||  Could not check the latest version; using the built-in address.
+  주소: |||  URL:
+  저장 위치: |||  Save location:
+OptiScaler 내려받는 중입니다...|||Downloading OptiScaler...
+[실패] 내려받지 못했습니다. 인터넷 연결을 확인하고 다시 눌러 주세요.|||[FAILED] Download failed. Check your internet connection and press again.
+내려받기 실패|||Download failed
+[실패] 받은 파일이 너무 작습니다. 내려받다 끊긴 것 같습니다.|||[FAILED] The downloaded file is too small. The download was probably interrupted.
+  → 내려받기를 마쳤습니다.|||  -> Download finished.
+압축을 풀고 있습니다. 윈도우에 들어 있는 기능을 씁니다.|||Extracting. Using built-in Windows features.
+압축을 푸는 중입니다...|||Extracting...
+[실패] 압축을 풀지 못했습니다. 윈도우 10 이상인지 확인해 주세요.|||[FAILED] Extraction failed. Check that you are on Windows 10 or later.
+압축 풀기 실패|||Extraction failed
+  → 압축을 풀었습니다.|||  -> Extracted.
+이 게임이 읽어 들일 파일 이름을 정하고 있습니다...|||Choosing the dll name this game will load...
+ (불칸 게임이라 이 이름을 씁니다)||| (Vulkan game, so this name is used)
+기존 파일을 백업하고 있습니다.|||Backing up existing files.
+  백업 위치: |||  Backup location:
+  이미 백업돼 있어 그대로 둡니다: |||  Already backed up; left as is:
+  백업함: |||  Backed up:
+  [경고] 백업하지 못했습니다 (윈도우 오류 %lu): |||  [WARNING] Could not back up (Windows error %lu):
+기존 폴더를 백업하는 중입니다...|||Backing up existing folders...
+  백업함: %s 폴더 (파일 %d개)|||  Backed up: %s folder (%d files)
+게임 폴더에 파일을 넣고 있습니다...|||Copying files into the game folder...
+게임 폴더에 파일을 넣는 중입니다...|||Copying files into the game folder...
+  → 파일 %d개를 넣었습니다.|||  -> Copied %d files.
+[실패] OptiScaler 를 %s 로 넣지 못했습니다 (윈도우 오류 %lu)|||[FAILED] Could not install OptiScaler as %s (Windows error %lu)
+       게임이 켜져 있거나 다른 프로그램이 그 파일을 잡고 있는지 확인해 주세요.|||       Check whether the game is running or another program is holding that file.
+  OptiScaler.dll 을 |||  Renamed OptiScaler.dll to
+ 로 바꿨습니다.|||.
+[경고] OptiScaler.dll 이 없습니다. 배포 파일 구성이 바뀐 것 같습니다.|||[WARNING] OptiScaler.dll is missing. The package contents seem to have changed.
+DLSS 5를 켜는 설정만 넣고 있습니다. 화질 값은 제작자 기본값 그대로 둡니다.|||Writing only the settings needed to enable DLSS 5. Quality values stay at the author's defaults.
+신경망 파일을 확인하는 중입니다...|||Checking the neural model file...
+  찾았습니다: |||  Found:
+  이 파일을 복사해 옵니다. 원래 있던 곳은 그대로 둡니다.|||  Copying this file. The original stays where it is.
+  복사 중입니다. 150MB가 넘어 잠시 걸립니다.|||  Copying. It is over 150MB, so this takes a moment.
+신경망 파일을 복사하는 중입니다...|||Copying the neural model file...
+  → 복사를 마쳤습니다. 이 위치를 기억해 두었으니 다음 게임부터는 바로 씁니다.|||  -> Copy finished. This location is remembered for the next game.
+     원본 : |||     Source :
+     설치 : |||     Installed :
+     (CRC 가 서로 같아야 정상입니다. 카드에 맞지 않는 파일이면 게임에서 켜지지 않습니다)|||     (The CRCs must match. A file that does not suit the card will not work in game)
+[실패] 신경망 파일을 넣지 못했습니다. (윈도우 오류 %lu)|||[FAILED] Could not install the neural model file. (Windows error %lu)
+       원본 위치: |||       Source location:
+       넣으려던 곳: |||       Destination:
+       복사가 중간에 끊겼습니다. 드라이브 여유 공간을 확인해 주세요.|||       The copy was interrupted. Check the free space on the drive.
+       게임이나 런처가 파일을 잡고 있습니다. 전부 끄고 다시 눌러 주세요.|||       The game or a launcher is holding the file. Close them all and press again.
+       권한이 막혔습니다. 이 프로그램을 오른쪽 클릭 → [관리자 권한으로 실행] 해 주세요.|||       Permission denied. Right-click this program -> [Run as administrator].
+  이미 게임 폴더에 있습니다.|||  Already in the game folder.
+[중요] 신경망 파일(nvngx_dlssnr.dll)을 끝내 찾지 못했습니다.|||[IMPORTANT] The neural model file (nvngx_dlssnr.dll) was not found.
+       설치는 여기까지 됐고, DLSS 업스케일링은 동작합니다.|||       Installation completed up to this point, and DLSS upscaling works.
+       신경망 렌더링만 아직 꺼져 있습니다.|||       Only neural rendering is still off.
+       이 파일은 받으신 압축 안에 프로그램과 함께 들어 있습니다.|||       This file is included in the downloaded archive together with the program.
+       압축을 푸신 폴더에서 DLSS5_Setup.exe 를 실행해 주세요.|||       Run DLSS5_Setup.exe from the extracted folder.
+       (exe 만 따로 옮기시면 옆에 있던 파일을 찾지 못합니다)|||       (If you move only the exe, it cannot find the files that were next to it)
+       지금 프로그램 위치: |||       Current program location:
+  신경망 파일이 없어서 DLSS Neural Rendering 항목은 꺼 두었습니다.|||  The neural model file is missing, so DLSS Neural Rendering was turned off.
+  (켠 채로 두면 게임이 매 프레임 헛돌며 로그가 불어나고 프레임이 떨어집니다)|||  (Leaving it on makes the game retry every frame, which grows the log and lowers the frame rate)
+  나중에 파일을 받으신 뒤 [DLSS 5 설치]를 다시 누르면 자동으로 켜집니다.|||  After you get the file, press [Install DLSS 5] again and it will be turned on.
+설치 기록을 남겼습니다. [되돌리기]를 누르면 이 목록대로 원래대로 돌려놓습니다.|||Saved the install record. [Restore] uses this list to put everything back.
+───── 설치를 마쳤습니다|||───── Installation finished
+설치가 제대로 됐는지 확인하는 중입니다...|||Checking the installation...
+───── 자체 점검: 이상 없습니다|||───── Self-check: OK
+───── 자체 점검: 빠진 것이 있습니다|||───── Self-check: something is missing
+설치가 끝났지만 확인해 보니 빠진 것이 있습니다.|||Installation finished, but something is missing.
+이대로는 게임에서 DLSS 5가 켜지지 않습니다.|||DLSS 5 will not work in game as it is.
+[되돌리기] 를 누르신 뒤 다시 설치해 보세요.|||Press [Restore], then install again.
+그래도 같으면 [진행 기록 복사]를 눌러 게시물 댓글에 붙여넣어 주세요.|||If it is the same, press [Copy log] and paste it into a comment on the mod page.
+무엇이 빠졌는지 그 기록에 그대로 적혀 있습니다.|||The log shows what is missing.
+설치를 확인해 주세요|||Please check the installation
+★ 이제 게임에서 할 일 (순서대로 하셔야 켜집니다)|||★ What to do in game (in this order)
+  1. 게임을 켭니다.|||  1. Start the game.
+     이 게임은 설정에 DLSS 항목이 없습니다. 그래서 바꾸실 것이 없습니다.|||     This game has no DLSS option in its settings, so there is nothing to change.
+     프로그램이 넣어 둔 것들이 알아서 DLSS 5를 만들어 겁니다.|||     The installed files apply DLSS 5 on their own.
+  2. 세이브를 불러와 실제 게임 화면으로 들어가세요. 메뉴 화면에서는 적용되지 않습니다.|||  2. Load a save and get into actual gameplay. It does not apply in menus.
+  3. Insert 키로 리세이드 창을 열고 위쪽 RenoDX-DLSSNR 칸을 누르세요.|||  3. Press Insert to open the ReShade window and click the RenoDX-DLSSNR tab near the top.
+     ACTIVE - NR INJECTED 라고 적혀 있으면 켜진 것입니다.|||     If it says ACTIVE - NR INJECTED, it is on.
+  4. F7 키로 껐다 켜며 비교해 보세요. 얼굴 클로즈업에서 차이가 가장 잘 보입니다.|||  4. Press F7 to turn it off and on for comparison. The difference is easiest to see on close-up faces.
+  2. 게임 설정 → 그래픽 → 업스케일링(Upscaling)을 반드시 DLSS로 바꿉니다.|||  2. Game settings -> Graphics -> set Upscaling to DLSS.
+     이걸 안 하면 DLSS 5는 켜지지 않습니다. FSR 이나 꺼짐으로 두면 안 됩니다.|||     Without this DLSS 5 will not turn on. It must not be FSR or Off.
+  3. 세이브를 불러와 실제 게임 화면으로 들어가세요. 메뉴 화면에서는 적용되지 않습니다.|||  3. Load a save and get into actual gameplay. It does not apply in menus.
+  4. Insert 키로 조절 창을 열고 맨 아래 DLSS Neural Rendering 항목을 펼치세요.|||  4. Press Insert to open the control window and expand DLSS Neural Rendering at the bottom.
+  5. F7 키로 껐다 켜며 비교해 보세요. 얼굴 클로즈업에서 차이가 가장 잘 보입니다.|||  5. Press F7 to turn it off and on for comparison. The difference is easiest to see on close-up faces.
+※ 프레임이 모자라면 Insert 창에서 Model resolution 을 0.7 로 내리세요.|||* If the frame rate is too low, lower Model resolution to 0.7 in the Insert window.
+※ 피부가 하얗게 뜨거나 반짝이면 Detail 과 Colour 를 내리세요.|||* If skin looks too white or shiny, lower Detail and Colour.
+※ 게임이 안 켜지거나 이상하면 [되돌리기]를 누르면 설치 전으로 돌아갑니다.|||* If the game does not start or looks wrong, [Restore] returns it to the pre-install state.
+        설치가 완료되었습니다. 이제 게임을 켜세요.|||        Installation is complete. You can start the game now.
+설치가 완료되었습니다|||Installation is complete
+        설치를 마쳤지만 빠진 것이 있습니다.|||        Installation finished, but something is missing.
+        위의 [자체 점검] 부분을 확인해 주세요.|||        Check the [Self-check] section above.
+확인이 필요합니다|||Needs attention
+게임이 설치된 폴더를 고르세요|||Select the folder where the game is installed
+\\Users\\(사용자)|||\\Users\\(user)
+진행 기록을 복사했습니다. 댓글이나 메시지에 그대로 붙여넣기 하시면 됩니다.|||Log copied. Paste it into a comment or message.
+먼저 목록에서 게임을 고르세요.|||Please select a game from the list first.
+DLSS 5 설치 도우미|||DLSS 5 Setup Helper
+고른 게임: |||Selected game:
+DLSS 5 설치 도우미  |||DLSS 5 Setup Helper
+맑은 고딕|||Segoe UI
+1) 게임을 고릅니다   2) [DLSS 5 설치]를 누릅니다   3) 게임 설정에 DLSS 항목이 있으면 켜져 있어야 합니다\n|||1) Select a game   2) Press [Install DLSS 5]   3) If the game has a DLSS option, it must be turned on\n
+온라인 게임에는 쓰지 마세요. 싱글 플레이 전용입니다.|||Do not use in online games. Single player only.
+그래픽카드를 확인하고 있습니다...|||Checking the graphics card...
+진행 기록 복사|||Copy log
+DLSS 5 설치|||Install DLSS 5
+되돌리기|||Restore
+준비됨|||Ready
+DLSS 5 설치 도우미 |||DLSS 5 Setup Helper
+이 기록은 |||This log is also saved to
+ 에도 저장됩니다. 문제가 생기면 [진행 기록 복사]를 눌러 게시물 댓글에 붙여넣어 주세요.|||. If something goes wrong, press [Copy log] and paste it into a comment on the mod page.
+윈도우: %lu.%lu 빌드 %lu|||Windows: %lu.%lu build %lu
+관리자 권한: |||Administrator:
+예|||Yes
+아니오|||No
+프로그램 위치: |||Program location:
+프로그램 폴더 여유 공간: %lld MB|||Free space in program folder: %lld MB
+같이 들어 있어야 할 파일을 확인합니다...|||Checking the bundled files...
+  → 모두 있습니다. 이상 없습니다.|||  -> All present. OK.
+  → 빠지거나 깨진 것이 있습니다:|||  -> Some files are missing or damaged:
+프로그램이 쓸 파일이 온전하지 않습니다.|||The files this program uses are incomplete.
+이대로 설치하면 게임에서 DLSS 5가 켜지지 않습니다.|||If you install like this, DLSS 5 will not work in game.
+받으신 압축을 다시 풀어 주세요.|||Please extract the downloaded archive again.
+예전에 받아 두신 폴더가 섞이지 않도록, 새 폴더에 푸시는 것이 안전합니다.|||Extract it into a new folder so it does not mix with an older copy.
+파일이 온전하지 않습니다|||Files are incomplete
+그래픽카드: |||Graphics card:
+      드라이버 |||      Driver
+RTX 50 시리즈입니다.|||RTX 50 series.
+RTX 20 / 30 / 40 시리즈입니다.|||RTX 20 / 30 / 40 series.
+RTX 20 시리즈보다 오래된 카드는 DLSS 5를 쓸 수 없습니다.|||Cards older than the RTX 20 series cannot use DLSS 5.
+확인 불가|||Unknown
+   (엔비디아 카드가 아닙니다)|||   (not an NVIDIA card)
+DLSS 5는 엔비디아 RTX 카드에서만 동작합니다.|||DLSS 5 only works on NVIDIA RTX cards.
+설치된 게임을 찾고 있습니다...|||Looking for installed games...
+스팀 게임 %d개를 찾았습니다. 목록에서 고르세요.|||Found %d Steam games. Select one from the list.
+설정 파일은 지우지 않고 남겨 둡니다: |||Settings file kept (not deleted): 
+  리세이드가 깔려 있습니다. 충돌을 피하려고 DxgiFactoryWrapping 을 켭니다.|||  ReShade is installed. Turning on DxgiFactoryWrapping to avoid a conflict.
+엑스박스 게임 %d개를 찾았습니다.|||Found %d Xbox games.
+GOG 게임 %d개를 찾았습니다.|||Found %d GOG games.
+록스타 게임 %d개를 찾았습니다.|||Found %d Rockstar games.
+유비소프트 게임 %d개를 찾았습니다.|||Found %d Ubisoft games.
+에픽 게임 %d개를 찾았습니다.|||Found %d Epic games.
+이미 목록에 있는 게임입니다.|||That game is already in the list.
+고른 폴더에서 게임 실행 파일을 찾지 못했습니다: |||No game executable found in that folder: 
+  게임이 설치된 폴더를 고르세요. 런처 폴더나 상위 폴더가 아닙니다.|||  Pick the folder the game is installed in, not a launcher or a parent folder.
+이 폴더에서는 게임을 찾지 못했습니다.|||No game found in that folder.
+  (직접 고름)|||  (picked)
+직접 고른 게임: |||Picked game: 
+  폴더: |||  Folder: 
+목록에 넣었습니다. [DLSS 5 설치] 를 누르세요.|||Added to the list. Press [Install DLSS 5].
+이 게임에는 안티치트가 들어 있습니다.\n\n|||This game ships with anti-cheat.\n\n
+  찾은 것: |||  Found: 
+DLSS 5 설치는 게임에 dll 을 끼워 넣는 방식이라, 안티치트가 보면 |||Installing DLSS 5 means adding a dll to the game, and anti-cheat 
+치트 프로그램과 구분하지 못합니다. 계정이 정지될 수 있습니다.\n\n|||cannot tell that apart from a cheat. Your account could be banned.\n\n
+이 게임에는 설치하지 않습니다.|||This game will not be touched.
+안티치트가 있는 게임입니다|||This game has anti-cheat
+안티치트가 있어 설치를 멈췄습니다: |||Stopped -- anti-cheat found: 
+폴더에서 고르기|||Pick a folder
+게임 %d개를 찾았습니다. 목록에 없으면 [폴더에서 고르기] 를 쓰세요.|||Found %d games. Not listed? Use [Pick a folder].
+1) 게임을 고릅니다   2) [DLSS 5 설치]를 누릅니다   3) 게임에 DLSS 항목이 있으면 켜 두세요|||1) Select a game   2) Press [Install DLSS 5]   3) If the game has a DLSS option, turn it on
+찾는 곳 : 스팀 · 엑스박스 · GOG · 에픽 · 록스타 · 유비소프트.   없으면 [폴더에서 고르기]|||Scans: Steam, Xbox, GOG, Epic, Rockstar, Ubisoft.   Not listed? Use [Pick a folder]
+되는 것 : DX11 · DX12 · 벌칸 게임.   안 되는 것 : DX9 · DX10 같은 오래된 게임|||Works with: DX11, DX12, Vulkan.   Does not work with: DX9, DX10 and older engines
+쓰지 말 것 : 온라인 게임. 안티치트가 dll 을 치트로 보고 계정을 정지시킵니다|||Do not use on online games. Anti-cheat reads the dll as a cheat and can ban your account
+1) 게임을 고릅니다   2) [DLSS 5 설치]를 누릅니다   3) 게임에 DLSS 항목이 있으면 켜 두세요\n|||1) Select a game   2) Press [Install DLSS 5]   3) If the game has a DLSS option, turn it on\n
+찾는 곳 : 스팀 · 엑스박스 · GOG · 에픽 · 록스타 · 유비소프트.   없으면 [폴더에서 고르기]\n|||Scans: Steam, Xbox, GOG, Epic, Rockstar, Ubisoft.   Not listed? Use [Pick a folder]\n
+되는 것 : DX11 · DX12 · 벌칸 게임.   안 되는 것 : DX9 · DX10 같은 오래된 게임\n|||Works with: DX11, DX12, Vulkan.   Does not work with: DX9, DX10 and older engines\n
+고른 폴더: |||Picked folder: 
+  이미 목록에 있는 게임입니다.|||  That game is already in the list.
+  엔비디아 스트림라인을 쓰는 게임입니다. dxgi.dll 대신 winmm.dll 로 넣습니다.|||  This game uses NVIDIA Streamline. Installing as winmm.dll instead of dxgi.dll.
+ 이(가) 있습니다. DLSS 를 쓰는 게임입니다.||| found. This game uses DLSS.
+※ 설치 직후 첫 실행은 실패할 수 있습니다. 그냥 한 번 더 켜시면 됩니다.|||* The very first launch after installing may fail. Just start the game once more.
+   엔비디아가 뒤에서 파일을 정리하느라 그런 것이라 고장이 아닙니다.|||  NVIDIA is tidying up files in the background. It is not a fault.
+이 게임은 온라인 게임입니다.\n\n|||This is an online game.\n\n
+이런 게임의 안티치트는 게임 안에 들어 있어 파일로는 보이지 않습니다. |||The anti-cheat in these games lives inside the client, so it cannot be seen as a file. 
+치트 프로그램과 구분하지 못합니다. 계정이 영구 정지될 수 있습니다.\n\n|||cannot tell it apart from a cheat. Your account may be banned permanently.\n\n
+온라인 게임입니다|||This is an online game
+온라인 게임이라 설치를 멈췄습니다: |||Stopped: this is an online game: 
+월드 오브 워크래프트|||World of Warcraft
+오버워치|||Overwatch
+히어로즈 오브 더 스톰|||Heroes of the Storm
+디아블로 4|||Diablo IV
+카운터 스트라이크|||Counter-Strike
+카운터 스트라이크 2|||Counter-Strike 2
+도타 2|||Dota 2
+팀 포트리스 2|||Team Fortress 2
+발로란트|||VALORANT
+리그 오브 레전드|||League of Legends
+로스트아크|||Lost Ark
+배틀그라운드|||PUBG
+에이펙스 레전드|||Apex Legends
+포트나이트|||Fortnite
+데스티니 2|||Destiny 2
+레인보우 식스|||Rainbow Six
+명조|||Wuthering Waves
+원신|||Genshin Impact
+붕괴 스타레일|||Honkai: Star Rail
+붕괴|||Honkai
+젠레스 존 제로|||Zenless Zone Zero
+승리의 여신 니케|||NIKKE
+마블 라이벌즈|||Marvel Rivals
+델타 포스|||Delta Force
+검은사막|||Black Desert
+메이플스토리|||MapleStory
+이 PC 의 그래픽카드는 엔비디아가 아닙니다.\n\n|||This PC does not have an NVIDIA graphics card.\n\n
+DLSS 5 의 뉴럴 렌더링은 엔비디아가 만든 모델을 쓰고, 그 모델은 |||DLSS 5 neural rendering uses a model NVIDIA made, and that model 
+엔비디아 드라이버 위에서만 돌아갑니다. 설치해도 켜지지 않고 |||only runs on an NVIDIA driver. Installing will not turn it on, it 
+게임 폴더에 파일만 남습니다.\n\n|||will just leave files in the game folder.\n\n
+라데온에서 돌려 보려는 시도가 따로 있긴 합니다만, 제가 확인하지 |||There are separate attempts to run it on Radeon, but I could not 
+못해 이 도구에는 넣지 않았습니다.\n\n|||verify them, so they are not included here.\n\n
+설치하지 않습니다.|||Nothing will be installed.
+엔비디아 카드가 아닙니다|||Not an NVIDIA card
+엔비디아 카드가 아니라 설치를 멈췄습니다: |||Stopped: this is not an NVIDIA card: 
+RTX 20 / 30 시리즈에서는 확인하지 못했습니다.\n\n|||I have not verified RTX 20 / 30 series cards.\n\n
+엔비디아가 공식으로 지원한다고 밝힌 것은 RTX 50 이고, |||NVIDIA has only announced official support for RTX 50, and I 
+RTX 40 은 제가 확인했습니다. 20 과 30 은 켜지지 않거나 |||verified RTX 40 myself. On 20 and 30 it may not turn on, or the 
+프레임이 크게 떨어질 수 있습니다.\n\n|||frame rate may drop a lot.\n\n
+그래도 설치할까요? 안 되면 [되돌리기]로 원래대로 돌아갑니다.|||Install anyway? If it does not work, press Restore to undo it.
+확인하지 못한 그래픽카드입니다|||Unverified graphics card
+사용자가 설치를 취소했습니다 (RTX 20 / 30).|||User cancelled the install (RTX 20 / 30).
+확인하지 못한 카드인데 사용자가 계속하기를 골랐습니다.|||Unverified card, but the user chose to continue.
+AMD Radeon RX 7800 XT (시험용 흉내)|||AMD Radeon RX 7800 XT (test stand-in)
+NVIDIA GeForce RTX 3080 (시험용 흉내)|||NVIDIA GeForce RTX 3080 (test stand-in)
+RTX 40 시리즈입니다.|||RTX 40 series.
+RTX 20 / 30 시리즈입니다. 이 시리즈에서는 확인하지 못했습니다.|||RTX 20 / 30 series. I have not verified this series.
