@@ -427,3 +427,110 @@ AMD Radeon RX 7800 XT (시험용 흉내)|||AMD Radeon RX 7800 XT (test stand-in)
 NVIDIA GeForce RTX 3080 (시험용 흉내)|||NVIDIA GeForce RTX 3080 (test stand-in)
 RTX 40 시리즈입니다.|||RTX 40 series.
 RTX 20 / 30 시리즈입니다. 이 시리즈에서는 확인하지 못했습니다.|||RTX 20 / 30 series. I have not verified this series.
+  스트림라인 게임인데 nvngx_dlssg.dll 이 없습니다. 프레임 생성 준비는 건너뜁니다.|||  This game uses Streamline but has no nvngx_dlssg.dll. Skipping frame generation setup.
+  스트림라인 파일을 복사하지 못했습니다. 프레임 생성 준비는 건너뜁니다.|||  Could not copy the Streamline files. Skipping frame generation setup.
+  프레임 생성 준비: 스트림라인 파일 %d개를 넣었습니다.|||  Frame generation ready: copied %d Streamline files.
+  게임 설정에서 DLSS 프레임 생성을 켜시면 바로 걸립니다.|||  Turn on DLSS Frame Generation in the game's settings and it will work.
+  이미 |||  OptiScaler is already in 
+ 에 OptiScaler 가 들어 있습니다. |||. 
+새 자리를 만들지 않고 그 파일을 갱신합니다.|||Updating that file instead of making a new one.
+  GTA5 입니다. dxgi.dll 을 안 불러오는 게임이라 winmm.dll 로 넣습니다.|||  This is GTA5. It never loads dxgi.dll, so winmm.dll is used instead.
+  이 게임은 런처의 BattlEye 를 끄지 않으면 설치해도 창이 안 뜹니다.|||  Unless BattlEye is turned off in the launcher, the window will not appear even after installing.
+  리세이드는 이미 있고 잘 뜨고 있습니다. 그대로 둡니다.|||  ReShade is already here and working. Leaving it alone.
+  리세이드는 이미 있습니다. 아직 게임을 켜지 않으신 것 같아 그대로 둡니다.|||  ReShade is already here. It looks like the game has not been run yet, so leaving it alone.
+  게임을 켜고 8 을 눌러도 창이 안 뜨면 설치를 한 번 더 눌러 주세요.|||  If the window does not open when you press 8 in the game, run the install once more.
+  리세이드는 이미 있습니다. 그대로 둡니다.|||  ReShade is already here. Leaving it alone.
+  리세이드가 |||  ReShade is here as 
+ 로 있는데 ReShade.log 가 없습니다. 한 번도 뜨지 못한 것입니다.|||, but there is no ReShade.log. It has never come up.
+  이름이 맞지 않는 것으로 보고 |||  The name looks wrong, so trying to move it to 
+ 로 옮겨 봅니다.|||.
+  옮겼습니다. 게임을 켜고 숫자 8 키를 눌러 보세요.|||  Moved. Start the game and press the 8 key.
+  [건너뜀] 옮기지 못했습니다 (윈도우 오류 %lu)|||  [Skipped] Could not move it (Windows error %lu)
+  [건너뜀] 리세이드 재료가 프로그램 옆에 없습니다.|||  [Skipped] The ReShade files are not next to this program.
+폴더 이름|||folder name
+실행 파일 안의 이름|||name inside the exe
+폴더 안의 d3d12 파일|||d3d12 file in the folder
+  [건너뜀] 리세이드를 넣을 빈 이름이 없습니다. 쓰시려면 직접 넣으셔야 합니다.|||  [Skipped] No free name is left for ReShade. You would have to install it yourself.
+리세이드를 같이 넣는 중입니다...|||Installing ReShade as well...
+  이 게임은 DirectX 12 로 보입니다. (|||  This game looks like DirectX 12. (
+  이 게임은 DirectX 11 로 보입니다.|||  This game looks like DirectX 11.
+  [건너뜀] 리세이드를 넣지 못했습니다 (윈도우 오류 %lu)|||  [Skipped] Could not install ReShade (Windows error %lu)
+  리세이드를 |||  Installed ReShade as 
+ 로 넣었습니다. (dxgi.dll 은 DLSS 5 가 쓰고 있습니다)|||. (dxgi.dll is taken by DLSS 5)
+  ReShade.ini 를 넣었습니다. (숫자 8 키로 창이 열립니다. Insert 는 DLSS 5 창입니다)|||  ReShade.ini is in place. (The 8 key opens its window. Insert opens the DLSS 5 window)
+  ReShade.ini 를 넣었습니다. (숫자 8 키로 창이 열립니다)|||  ReShade.ini is in place. (The 8 key opens its window)
+2010년 무렵 이전 게임이라면 DirectX 9 라서|||If the game is from before about 2010 it is DirectX 9, so
+DLSS 5 자체가 안 되는 게임일 수 있습니다.|||DLSS 5 may not be possible in that game at all.
+리세이드도 같이 넣습니다. (나중에 직접 넣으려 하면 이름이 겹쳐 막힙니다)|||Installing ReShade too. (If you add it later yourself, the names collide and it fails)
+  3. 숫자 8 키로 리세이드 창을 열고 위쪽 RenoDX-DLSSNR 칸을 누르세요.|||  3. Press the 8 key to open ReShade and click the RenoDX-DLSSNR tab at the top.
+※ 리세이드도 같이 넣었습니다. 숫자 8 키로 열립니다. (DLSS 5 창은 Insert 입니다)|||* ReShade was installed as well. The 8 key opens it. (Insert opens the DLSS 5 window)
+   8 을 눌러도 창이 안 뜨면 [DLSS 5 설치]를 한 번 더 누르세요.|||   If pressing 8 does not open it, press [Install DLSS 5] once more.
+   게임마다 읽어 들이는 파일 이름이 달라서, 다른 이름으로 바꿔 넣습니다.|||   Games load different file names, so it goes in under another name.
+  → DLSS 1.0 에서 멈춘 게임입니다. 신경망을 걸 통로가 없습니다.|||  -> This game stopped at DLSS 1.0. There is no path to hang the neural model on.
+이 게임의 DLSS 는 DLSS 1.0 입니다.\n\n|||This game's DLSS is DLSS 1.0.\n\n
+  고른 게임: |||  Game: 
+DLSS 1.0 은 지금의 DLSS 2 / 3 / 4 와 이름만 같고 구조가 다릅니다. |||DLSS 1.0 only shares the name with today's DLSS 2 / 3 / 4. Inside it is a different thing. 
+게임마다 따로 학습시켜 넣던 방식이라, 요즘 DLSS 가 쓰는 연결 통로가 |||It was trained game by game, so the connection point that modern DLSS uses 
+아예 없습니다.\n\n|||simply does not exist.\n\n
+이 프로그램은 그 통로를 가로채서 신경망을 거는 방식입니다. 가로챌 것이 |||This program works by intercepting that connection and hanging the neural model on it. With nothing 
+없으면 설치는 끝까지 잘 되지만 게임 안에서는 아무 일도 일어나지 |||to intercept, the install finishes fine but nothing happens inside the game. 
+않습니다. 설정을 바꿔도 달라지지 않습니다.\n\n|||Changing settings makes no difference either.\n\n
+그래도 설치할까요? [되돌리기]를 누르면 언제든 원래대로 돌아갑니다.|||Install anyway? [Restore] puts everything back at any time.
+DLSS 1.0 게임입니다|||This is a DLSS 1.0 game
+사용자가 설치를 취소했습니다 (DLSS 1.0 게임).|||The user cancelled the install (DLSS 1.0 game).
+DLSS 1.0 게임인데 사용자가 계속하기를 골랐습니다.|||DLSS 1.0 game, but the user chose to continue.
+※ 이 게임은 DLSS 프레임 생성을 할 줄 압니다. 게임 설정에서 켜세요.|||* This game can do DLSS Frame Generation. Turn it on in the game settings.
+   그 다음 Insert 창의 Frame Generation 에서 Active 에 체크하시면 됩니다.|||   Then open Insert, find Frame Generation and tick Active.
+   프레임이 거의 두 배가 됩니다. 수직동기화를 켜 두면 주사율에서 막힙니다.|||   It roughly doubles the frame rate. With V-Sync on, the refresh rate is the ceiling.
+※ 이 게임은 DLSS 프레임 생성을 할 줄 압니다. 쓰시려면 이렇게 하세요.|||* This game can do DLSS Frame Generation. To use it:
+   1. 게임 설정에서 DLSS 프레임 생성을 켭니다.|||   1. Turn on DLSS Frame Generation in the game settings.
+   2. 그것만으로 프레임이 오르면 거기서 끝입니다. 창은 건드리지 마세요.|||   2. If the frame rate rises, you are done. Leave the panel alone.
+   3. 안 오를 때만 Insert 창의 Frame Generation 을 DLSSG 로 바꾸세요.|||   3. Only if it does not, set Frame Generation to DLSSG in the Insert panel.
+   수직동기화를 켜 두면 주사율에서 막혀 숫자가 안 오릅니다.|||   With V-Sync on, the refresh rate caps it and the number will not move.
+  1.0.1.1 이 넣었던 프레임 생성 설정을 기본값으로 되돌렸습니다.|||  Reset the frame generation setting that 1.0.1.1 had written.
+  그 설정 때문에 게임이 켜자마자 꺼지는 제보가 있었습니다.|||  It was reported to make games close the moment they start.
+  ReShade.ini 는 이미 있어 그대로 둡니다. 창 여는 키만 숫자 8 로 맞췄습니다.|||  ReShade.ini already exists, so it is left as is. Only the overlay key is set to 8.
+  엔비디아 스트림라인을 쓰는 게임입니다. dxgi.dll 자리를 먼저 봅니다.|||  This game uses NVIDIA Streamline. Trying the dxgi.dll slot first.
+  (winmm.dll 자리에서는 스팀 오버레이에 막혀 Insert 창이 안 열립니다)|||  (In the winmm.dll slot the Steam overlay blocks it and Insert never opens)
+  winmm.dll 자리에 들어 있습니다. 이 자리에서는 Insert 창이 안 열립니다.|||  It sits in the winmm.dll slot. The Insert menu never opens from there.
+  dxgi.dll 자리가 비어 있어 그쪽으로 옮깁니다.|||  The dxgi.dll slot is free, so it is being moved there.
+  옛 winmm.dll 을 치웠습니다.|||  Removed the old winmm.dll.
+  게임에 원래 있던 winmm.dll 을 제자리에 돌려놨습니다.|||  Put the game's own winmm.dll back where it was.
+  [경고] 옛 winmm.dll 을 치우지 못했습니다. 게임을 끄고 다시 눌러 주세요.|||  [WARNING] Could not remove the old winmm.dll. Close the game and press it again.
+  엔비디아 스트림라인을 쓰는 게임입니다.|||  This game uses NVIDIA Streamline.
+  전에 winmm.dll 자리에서 스팀 오버레이에 막힌 기록이 있습니다.|||  There is a record of the Steam overlay blocking it in the winmm.dll slot.
+  이 게임은 dxgi.dll 을 직접 불러오니 그쪽으로 넣습니다.|||  This game loads dxgi.dll itself, so it goes there.
+  엔비디아 스트림라인을 쓰는 게임입니다. winmm.dll 로 넣습니다.|||  This game uses NVIDIA Streamline. Installing as winmm.dll.
+  (막힌 기록은 있지만 이 게임은 dxgi.dll 을 직접 안 불러옵니다. 옮기면 꺼집니다)|||  (It was blocked, but this game does not load dxgi.dll itself. Moving it would crash the game)
+  남아 있던 것 %d개를 치웠습니다.|||  Cleaned up %d leftover item(s).
+이 파일이 잠겨 있어서 지우지 못했습니다.|||These files are locked, so they could not be removed.
+게임이나 스팀이 아직 켜져 있는 것 같습니다.|||The game or Steam still seems to be running.
+완전히 끄신 뒤 [되돌리기] 를 한 번 더 눌러 주세요.|||Close it completely and press [Restore] once more.
+그러면 프로그램이 알아서 치웁니다.|||The program will clean them up by itself.
+  - _DLSS5_backup 폴더|||  - _DLSS5_backup folder
+  꺼둔 효과는 안 읽도록 했습니다. (설정 화면에서 멈추던 것)|||  Disabled effects are no longer loaded. (this is what froze the settings screen)
+  이 게임은 dxgi.dll 자리에서 확인된 게임이라 그쪽으로 넣습니다.|||  This game was verified in the dxgi.dll slot, so it goes there.
+  dxgi.dll 자리에 들어 있습니다. 스트림라인 게임에서는 게임이 꺼질 수 있는 자리입니다.|||  It sits in the dxgi.dll slot. On Streamline games that slot can crash the game.
+  winmm.dll 자리로 되돌립니다.|||  Moving it back to the winmm.dll slot.
+  옛 dxgi.dll 을 치웠습니다.|||  Removed the old dxgi.dll.
+  게임에 원래 있던 dxgi.dll 을 제자리에 돌려놨습니다.|||  Put the game's own dxgi.dll back where it was.
+  [경고] 옛 dxgi.dll 을 치우지 못했습니다. 게임을 끄고 다시 눌러 주세요.|||  [WARNING] Could not remove the old dxgi.dll. Close the game and press it again.
+리세이드도 같이 설치 (끄면 DLSS 5 만 넣습니다)|||Install ReShade too (uncheck for DLSS 5 only)
+리세이드는 넣지 않습니다. (창에서 끄셨습니다)|||ReShade will not be installed. (you unchecked it)
+리세이드도 같이 설치 (필요하신 분만 켜세요)|||Install ReShade too (only if you want it)
+리세이드는 넣지 않습니다. 쓰시려면 창에서 체크하고 다시 설치하세요.|||ReShade was not installed. Tick the box and install again if you want it.
+  전에 넣어둔 리세이드를 치웠습니다: |||  Removed the ReShade we installed earlier: 
+  [경고] 리세이드를 치우지 못했습니다: |||  [WARNING] Could not remove ReShade: 
+  리세이드 효과 파일도 치웠습니다.|||  Removed the ReShade effect files too.
+리세이드 매니저가 이 게임을 이미 들고 있습니다. 우리 리세이드는 넣지 않습니다.|||The ReShade Manager already handles this game. Our ReShade will not be installed.
+  (두 벌이 올라오면 나중 것이 스스로 꺼져서 창이 안 열립니다)|||  (with two copies loaded the second one shuts itself down and no menu opens)
+  효과 파일은 넣어 드립니다. (파일 %d개)|||  The effect files are installed for you. (%d files)
+  이 게임은 dxgi.dll 자리에서 꺼지는 것이 확인됐습니다. winmm.dll 로 넣습니다.|||  This game is known to crash in the dxgi.dll slot. Installing as winmm.dll.
+  데이즈곤입니다. 게임에 DLSS 항목이 없어 리세이드 방식으로 설치합니다.|||  This is Days Gone. The game has no DLSS option, so the ReShade route is used.
+  파일만 들어 있고 게임에는 DLSS 항목이 없는 경우입니다. 리세이드 방식으로 갑니다.|||  The files are there but the game has no DLSS option. Using the ReShade route.
+ 은 있지만 실행 파일은 DLSS 를 모릅니다.||| is present, but the game executable does not know DLSS.
+  프래그마타입니다. 옵티로 넣으면 게임이 꺼져서 리세이드 방식으로 갑니다.|||  This is PRAGMATA. OptiScaler makes it crash, so the ReShade route is used.
+[주의] 드라이버가 615.00 보다 낮습니다.|||[NOTE] Your driver is older than 615.00.
+  DLSS 5 신경망 파일은 615.00 이상을 요구합니다.|||  The DLSS 5 neural file requires 615.00 or newer.
+  낮은 드라이버에서는 게임에 따라 켜자마자 꺼질 수 있습니다.|||  On older drivers some games close right after starting.
+  엔비디아 앱에서 드라이버를 올리신 뒤 쓰시는 것이 좋습니다.|||  Update the driver in the NVIDIA app before using this.

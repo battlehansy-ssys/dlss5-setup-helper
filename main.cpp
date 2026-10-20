@@ -18,10 +18,10 @@
 
 // ================================================================ 설정
 // 버전 규칙: 아래 OPTI_URL(내려받기 주소)을 바꿀 때마다 맨 뒷자리를 1 올린다.
-static const wchar_t* APP_VER  = L"1.0.0.8";
-static const wchar_t* OPTI_VER = L"v0.2.0-dlssnr";
+static const wchar_t* APP_VER  = L"1.0.2.1";
+static const wchar_t* OPTI_VER = L"v0.2.0-patch1";
 static const wchar_t* OPTI_URL =
-    L"https://github.com/Dagherbou/OptiScaler_DLSSNR/releases/download/v0.2.0-dlssnr/OptiScaler-DLSSNR-v0.2.0.zip";
+    L"https://github.com/Dagherbou/OptiScaler_DLSSNR/releases/download/v0.2.0-patch1/OptiScaler-DLSSNR-v0.2.0-onimusha-fix.zip";
 static const wchar_t* SWAPPER_URL = L"https://github.com/rakanki911/DLSS5-Swapper";
 static const wchar_t* NEXUS_URL   = L"https://www.nexusmods.com/site/mods/2224?tab=files";
 static const wchar_t* BACKUP_DIR  = L"_DLSS5_backup";
@@ -54,6 +54,34 @@ static const IniSet PRESET[] = {
     { L"Upscalers", L"VulkanUpscaler", L"dlss"    },
     { L"DlssNr",    L"Enabled",        L"true"    },
     { L"DlssNr",    L"ToggleKey",      L"0x76"    },
+    // 2026-10-18. 모델이 화면의 몇 분의 일로 돌지. 기본값은 1.0 이다.
+    // 비용은 이 값의 제곱으로 늘어난다. 1.0 이면 0.5 의 네 배다.
+    // 30% 와 100% 를 같은 자리에서 재봤더니 결과가 같았다.
+    // 기본값 그대로 두면 프레임만 먹고 화질은 그대로다.
+    { L"DlssNr",    L"WorkingScale",   L"0.5"     },
+    // 2026-10-18. 신경망이 얼마나 세게 그릴지. 기본값은 1.0 이다.
+    // 이 값은 올려도 프레임을 먹지 않는다. 눈에 보이는 쪽을 올린다.
+    { L"DlssNr",    L"Intensity",      L"1.5"     },
+    // 2026-10-18. 모델이 만든 색을 얼마나 가져올지. 기본값은 1.0 이다.
+    //
+    // 1.0 으로 두면 어두운 장면에서 화면 전체가 지글거린다.
+    // 어두운 장면은 색 정보가 거의 없는데 모델은 색을 만들어 낸다.
+    // 그 지어낸 색이 하늘처럼 평탄한 면에 알갱이로 뿌려진다.
+    // 0 이면 게임의 색을 그대로 쓰고 모델은 밝기만 보탠다. 색 알갱이가 안 생긴다.
+    //
+    // 킹덤컴2 밤 성벽에서 하나씩 끄며 찾은 값이다 (2026-10-02).
+    //   리세이드 F9 로 끔          차이 없음
+    //   LocalStructure 1.0 -> 0    여전히 지글
+    //   WhitePointScale 바꿈       차이 없음
+    //   ColourStrength 1.0 -> 0    깨끗해졌다
+    //
+    // 디테일은 안 잃는다. 피부결·수염·천의 짜임은 전부 명암이지 색이 아니다.
+    // 레데리2 실측: 이 값이 1.0 일 때 선명도는 +2% 올리면서 채도를 +9% 올리고 있었다.
+    // 얻는 것보다 바꿔버리는 쪽이 크다. 그래서 낮과 밤을 나눌 필요가 없다.
+    //
+    // 지글거림이 나온 게임은 킹덤컴2와 스파이더맨 2 둘이다. 다른 게임은 안 나온다.
+    // 멀쩡한 게임의 화면도 같이 바뀌는 값이라는 점은 알고 넣는 것이다.
+    { L"DlssNr",    L"ColourStrength", L"0.0"     },
 };
 
 // 게임이 읽어 들일 수 있는 이름들 (앞에서부터 시도)
@@ -63,6 +91,7 @@ static const wchar_t* PROXY_NAMES[] = {
 
 // ================================================================ 전역
 static HWND g_hWnd, g_hList, g_hLog, g_hInstall, g_hRestore, g_hPick, g_hCopy, g_hStatus, g_hGpu, g_hApiLbl, g_hApi, g_hModeLbl, g_hMode;
+static HWND g_hRs;   // 리세이드도 같이 넣을지 고르는 칸 (기본 꺼짐)
 static HWND g_hTitle, g_hDesc;
 static HFONT g_font, g_fontTitle;
 struct Game { std::wstring name; std::wstring dir; };
@@ -151,6 +180,12 @@ static std::wstring U2W(const std::string& s) {
 static std::wstring LowerW(std::wstring s) {
     std::transform(s.begin(), s.end(), s.begin(), ::towlower); return s;
 }
+
+static std::string LowerA(std::string s) {
+    for (size_t i = 0; i < s.size(); i++)
+        if (s[i] >= 'A' && s[i] <= 'Z') s[i] = (char)(s[i] - 'A' + 'a');
+    return s;
+}
 static std::wstring SelfDir() {
     wchar_t buf[MAX_PATH] = {};
     GetModuleFileNameW(NULL, buf, MAX_PATH);
@@ -213,6 +248,7 @@ static bool RunHidden(const std::wstring& cmd, const std::wstring& workdir) {
 
 // 이 파일이 OptiScaler인지 확인 (제품명으로 판별)
 static bool IsOptiScalerFile(const std::wstring& path);
+static bool IsReShadeFile(const std::wstring& path);
 
 // 되돌리기가 끝난 뒤, 우리가 넣었던 것이 정말로 사라졌는지 확인한다.
 // 사람이 로그를 읽지 않아도 되도록 남은 것을 직접 찾아서 돌려준다.
@@ -225,10 +261,74 @@ static bool IsSettingsFile(const std::wstring& rel) {
     return false;
 }
 
+// 되돌리기 뒤에 남은 것을 치운다. 치우지 못한 것만 돌려준다.
+//
+// 2026-10-18. 전에는 남은 것을 찾기만 하고 "직접 지우셔도 됩니다" 라고 띄웠다.
+// 그런데 여기서 보는 것은 전부 우리가 넣은 것이고, 프록시 dll 은
+// IsOptiScalerFile 로 우리 것임을 확인까지 한 뒤다. 확인했으면 그냥 지우면 된다.
+// 창은 "게임이 켜져 있어 잠긴" 경우에만 의미가 있다.
+//
+// 9월 판으로 깔았던 분들은 그때 설치 기록에 OptiScaler 폴더와 Licenses 폴더가
+// 안 적혀 있어서 되돌려도 그 두 개가 남는다. 그분들이 이 창을 보게 된다.
+// _DLSS5_backup 은 손대지 않는다. 사용자의 원래 파일이 들어 있던 자리다.
+// 하위 폴더에 우리 파일이 남아 있는지 본다.
+//
+// 2026-10-18 프래그마타. 실행 파일이 _storage_ 안에 있는 게임이라 거기 설치되는데,
+// 점검은 게임 폴더 바로 아래만 봤다. 9월 판이 설치 기록 없이 넣은
+// dxgi.dll(리세이드)과 winmm.dll(DLSS 5)이 그대로 남아 있었는데
+// "넣었던 것이 모두 사라졌습니다" 라고 나왔다.
+// 우리 파일인지 확인하고 지운다. 남의 것은 건드리지 않는다.
+static void SweepOursDeep(const std::wstring& dir, int depth, int* swept, bool isRoot) {
+    if (depth < 0) return;
+    const wchar_t* names[] = { L"dxgi.dll", L"winmm.dll", L"version.dll", L"dbghelp.dll",
+                               L"wininet.dll", L"winhttp.dll", L"d3d11.dll", L"d3d12.dll",
+                               L"opengl32.dll", L"d3d9.dll" };
+    for (int i = 0; i < 10; i++) {
+        std::wstring p = dir + L"\\" + names[i];
+        if (!FileExists(p)) { continue; }
+        if (!IsOptiScalerFile(p) && !IsReShadeFile(p)) { continue; }
+        if (DeleteFileW(p.c_str())) { (*swept)++; }
+    }
+
+    // 2026-10-18 프래그마타. dll 만 지웠더니 _storage_ 안에 피더가 혼자 남아
+    // 게임이 켜자마자 꺼졌다. dlss5-feed-crash.dmp 가 그때 생겼다.
+    // 1.0.1.2 에서 안 터진 이유는 그때는 하위 폴더를 아예 안 봤기 때문이다.
+    // 짝을 맞춰 같이 치운다. 이름이 분명히 우리 것인 파일만 지운다.
+    const wchar_t* ours[] = { L"dlss5-feed.addon64", L"dlss5-feed.addon32",
+                              L"dlss5-feed.cfg", L"dlss5-feed.log",
+                              L"dlss5-feed-crash.dmp",
+                              L"renodx-dlss5.addon64", L"nvngx.dll_dlssnr.dll",
+                              L"nvngx_dlssnr.dll", L"OptiScaler.dll",
+                              L"_DLSS5_installed.txt" };
+    for (int i = 0; i < 10; i++) {
+        // 2026-10-20. 게임 폴더 바로 아래의 dlss5-feed.cfg 는 사용자가 게임 안에서
+        // 맞춰 놓은 값이다 (작업 해상도 등). 되돌리기 메시지도 "남겨 둔다"고 적는데
+        // 여기서 지우고 있었다. 말과 동작이 달랐다.
+        // 하위 폴더에 있는 것은 짝 잃은 잔해이므로 그대로 치운다 (프래그마타 사고).
+        if (isRoot && _wcsicmp(ours[i], L"dlss5-feed.cfg") == 0) { continue; }
+        std::wstring p = dir + L"\\" + ours[i];
+        if (!FileExists(p)) { continue; }
+        if (DeleteFileW(p.c_str())) { (*swept)++; }
+    }
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW((dir + L"\\*").c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) return;
+    do {
+        std::wstring n = fd.cFileName;
+        if (n == L"." || n == L"..") continue;
+        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
+        std::wstring ln = LowerW(n);
+        if (ln == L"reshade-shaders" || ln == L"_dlss5_backup") continue;
+        SweepOursDeep(dir + L"\\" + n, depth - 1, swept, false);
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+}
+
 static int CheckRevertLeftovers(const std::wstring& gameDir, std::wstring& reportOut) {
     std::wstring NL(1, (wchar_t)10);
     std::wstring bad;
     int miss = 0;
+    int swept = 0;
 
     // 우리가 넣는 파일들. 하나라도 남아 있으면 되돌리기가 덜 된 것이다.
     // 설정 파일(OptiScaler.ini, dlss5-feed.cfg)은 일부러 남기므로 여기서 보지 않는다.
@@ -243,29 +343,55 @@ static int CheckRevertLeftovers(const std::wstring& gameDir, std::wstring& repor
         L"_DLSS5_installed.txt",
     };
     for (size_t i = 0; i < _countof(files); i++) {
-        if (FileExists(gameDir + L"\\" + files[i]))
-            { bad += std::wstring(L"  - ") + files[i] + NL; miss++; }
+        std::wstring p = gameDir + L"\\" + files[i];
+        if (!FileExists(p)) continue;
+        DeleteFileW(p.c_str());
+        if (FileExists(p)) { bad += std::wstring(L"  - ") + files[i] + NL; miss++; }
+        else swept++;
     }
 
-    // 폴더
-    const wchar_t* dirs[] = { L"OptiScaler", L"Licenses", L"_DLSS5_backup", L"host64" };
-    for (int i = 0; i < 4; i++) {
-        if (DirExists(gameDir + L"\\" + dirs[i]))
-            { bad += std::wstring(L"  - ") + dirs[i] + L" 폴더" + NL; miss++; }
+    // 폴더. _DLSS5_backup 은 사용자의 원래 파일 자리라 손대지 않는다.
+    const wchar_t* dirs[] = { L"OptiScaler", L"Licenses", L"host64" };
+    for (int i = 0; i < 3; i++) {
+        std::wstring p = gameDir + L"\\" + dirs[i];
+        if (!DirExists(p)) continue;
+        RemoveTree(p);
+        if (DirExists(p)) { bad += std::wstring(L"  - ") + dirs[i] + L" 폴더" + NL; miss++; }
+        else swept++;
     }
+    if (DirExists(gameDir + L"\\_DLSS5_backup"))
+        { bad += L"  - _DLSS5_backup 폴더" + NL; miss++; }
 
-    // 프록시로 쓰인 dll 이 아직 OptiScaler 인지
+    // 프록시로 쓰인 dll 이 아직 OptiScaler 인지. 우리 것이 맞으면 지운다.
     const wchar_t* px[] = { L"winmm.dll", L"dxgi.dll", L"version.dll", L"dbghelp.dll",
                             L"wininet.dll", L"winhttp.dll" };
     for (int i = 0; i < 6; i++) {
         std::wstring p = gameDir + L"\\" + px[i];
+        if (!IsOptiScalerFile(p)) continue;
+        DeleteFileW(p.c_str());
         if (IsOptiScalerFile(p))
             { bad += std::wstring(L"  - ") + px[i] + L" (아직 OptiScaler 입니다)" + NL; miss++; }
+        else swept++;
     }
 
     // Feeder 셰이더
-    if (FileExists(gameDir + L"\\reshade-shaders\\Shaders\\DLSS5_Feed.fx"))
-        { bad += L"  - DLSS5_Feed.fx" + NL; miss++; }
+    {
+        std::wstring p = gameDir + L"\\reshade-shaders\\Shaders\\DLSS5_Feed.fx";
+        if (FileExists(p)) {
+            DeleteFileW(p.c_str());
+            if (FileExists(p)) { bad += L"  - DLSS5_Feed.fx" + NL; miss++; }
+            else swept++;
+        }
+    }
+
+    // 하위 폴더까지 본다. 옛 판이 거기 넣어둔 것이 있을 수 있다.
+    SweepOursDeep(gameDir, 3, &swept, true);
+
+    if (swept > 0) {
+        wchar_t sb[160];
+        swprintf_s(sb, L"  남아 있던 것 %d개를 치웠습니다.", swept);
+        Log(sb);
+    }
 
     reportOut = bad;
     return miss;
@@ -279,7 +405,7 @@ static long long FileSizeOf(const std::wstring& p);
 static std::wstring Crc32File(const std::wstring& p);
 struct NeedFile { const wchar_t* rel; long long size; const wchar_t* what; const wchar_t* crc; };
 static const NeedFile NEEDED[] = {
-    { L"data\\optiscaler.dat",                  130486024, L"OptiScaler 본체",      NULL },
+    { L"data\\optiscaler.dat",                  130480693, L"OptiScaler 본체",      NULL },
     { L"data\\nvngx_dlssnr.dll",                165840496, L"신경망 모델",          L"9C56B352" },
     { L"data\\feeder\\nvngx_dlss.dll",          58956400, L"DLSS 런타임",          NULL },
     { L"data\\feeder\\dlss5-feed.addon64",        297472, L"DLSS5-Feeder",         NULL },
@@ -696,7 +822,15 @@ static std::wstring FindAntiCheat(const std::wstring& dir, int depth, int* budge
             ln.find(L"battleye") != std::wstring::npos ||
             ln.find(L"beservice") != std::wstring::npos ||
             ln.find(L"anticheat") != std::wstring::npos ||
-            ln.find(L"vanguard") != std::wstring::npos ||
+            // 2026-10-18. 전에는 이름에 "vanguard" 가 들어가면 걸었다.
+            // 라이즈 오브 툼레이더의 DLC 파일이 이것 때문에 걸렸다 —
+            //   bigfile.dlc.pack.ancientvanguard.000.000.nfo
+            // DLC 이름이 Ancient Vanguard 였을 뿐이다. 설치가 아예 막혔다.
+            // 발로란트 안티치트의 실제 파일 이름으로 바꾼다.
+            // (발로란트 자체는 FindOnlineGame 의 이름 목록에서 따로 막는다)
+            ln.find(L"vgk.sys") != std::wstring::npos ||
+            ln.find(L"vgc.exe") != std::wstring::npos ||
+            ln.find(L"vgtray.exe") != std::wstring::npos ||
             ln.find(L"punkbuster") != std::wstring::npos ||
             // 텐센트 ACE (명조 등). 폴더 이름은 AntiCheatExpert 라 위에서 잡히지만
             // 드라이버와 실행 파일은 이 이름으로 따로 들어 있다.
@@ -975,7 +1109,11 @@ static std::wstring FindGameExe(const std::wstring& dir) {
 //   1 = 지원,  0 = 미지원,  -1 = 실행 파일을 못 찾아 판단 불가
 static int GameSupportsDlss(const std::wstring& exePath) {
     if (exePath.empty() || !FileExists(exePath)) return -1;
-    const char* marks[] = { "NVSDK_NGX", "nvngx", "sl.interposer" };
+    // 2026-10-18. "DLSS" 를 더했다.
+    //   라오어1 tlou-i.exe   NVSDK_NGX 없음, nvngx 없음, DLSS 있음
+    //   데이즈곤 DaysGone.exe 셋 다 없음
+    // 앞의 둘만 보면 라오어를 DLSS 없는 게임으로 보고 리세이드 길로 보낸다.
+    const char* marks[] = { "NVSDK_NGX", "nvngx", "sl.interposer", "DLSS" };
     HANDLE h = CreateFileW(exePath.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL,
                            OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
     if (h == INVALID_HANDLE_VALUE) return -1;
@@ -983,8 +1121,9 @@ static int GameSupportsDlss(const std::wstring& exePath) {
     std::string tail; DWORD got = 0; bool hit = false;
     while (!hit && ReadFile(h, &buf[0], (DWORD)buf.size(), &got, NULL) && got > 0) {
         std::string chunk = tail + std::string(&buf[0], got);
-        for (int i = 0; i < 3 && !hit; i++)
-            if (chunk.find(marks[i]) != std::string::npos) hit = true;
+        for (int i = 0; i < 4 && !hit; i++) {
+            if (chunk.find(marks[i]) != std::string::npos) { hit = true; }
+        }
         tail = (chunk.size() > 32) ? chunk.substr(chunk.size() - 32) : chunk;
     }
     CloseHandle(h);
@@ -1031,13 +1170,28 @@ static int GameSupportsDlssFor(const std::wstring& exe) {
     size_t cut = exe.find_last_of(L"\\");
     if (cut != std::wstring::npos) {
         std::wstring dir = exe.substr(0, cut);
-        // 스트림라인 파일은 우리가 절대 넣지 않는다. 있으면 게임 것이다.
+
+        // 스트림라인 파일은 우리가 절대 넣지 않는다. 있으면 게임이 받은 것이다.
+        //
+        // 2026-10-18. 다만 그것만으로는 모자란다. 데이즈곤이 2026-08-25
+        // 업데이트에서 sl.*.dll 을 같이 받았는데, 게임 설정에는 DLSS 항목이 없다.
+        // 파일만 굴러다니고 통로는 없는 상태다. 그걸 DLSS 게임으로 보고
+        // 옵티 방식으로 깔면 리세이드로 잘 쓰시던 분이 쓰던 길을 잃는다.
+        //
+        // 그래서 실행 파일이 DLSS 를 아는지 같이 본다.
+        //   DaysGone.exe 안에 NVSDK_NGX / nvngx / DLSS 글자가 하나도 없다.
+        //   위쳐3·라오어 같은 진짜 DLSS 게임은 그 글자가 들어 있다.
+        // 실행 파일이 모른다고 하면 폴더 파일은 안 믿는다.
         const wchar_t* sure[] = { L"sl.interposer.dll", L"sl.dlss.dll" };
         for (size_t i = 0; i < _countof(sure); i++) {
-            if (FileExists(dir + L"\\" + sure[i])) {
-                Log(std::wstring(L"  ") + sure[i] + L" 이(가) 있습니다. DLSS 를 쓰는 게임입니다.");
-                return 1;
+            if (!FileExists(dir + L"\\" + sure[i])) { continue; }
+            if (GameSupportsDlss(exe) == 0) {
+                Log(std::wstring(L"  ") + sure[i] + L" 은 있지만 실행 파일은 DLSS 를 모릅니다.");
+                Log(L"  파일만 들어 있고 게임에는 DLSS 항목이 없는 경우입니다. 리세이드 방식으로 갑니다.");
+                return 0;
             }
+            Log(std::wstring(L"  ") + sure[i] + L" 이(가) 있습니다. DLSS 를 쓰는 게임입니다.");
+            return 1;
         }
         // nvngx_dlss.dll 은 ReShade 방식으로 설치할 때 우리가 직접 넣는다.
         // 그러니 우리가 넣은 흔적(RenoDX 애드온)이 없을 때만 증거로 쓴다.
@@ -1091,7 +1245,245 @@ static bool IsDx9Only(const std::wstring& exe) {
     }
     return d3d9 && !modern;
 }
+// ── exe 가 이 dll 이름을 "가져오기 표"에 적어 두었는가.
+//
+// 2026-10-18 호라이즌 사고로 넣었다. 이름을 빌려 타는 자리는 두 종류다.
+//   표에 적힌 이름  → 게임이 켜지는 그 순간 같이 올라온다 (제일 먼저)
+//   안 적힌 이름    → 누군가 나중에 부를 때 올라온다 (늦다)
+// 스트림라인 게임에서 늦게 올라오면 sl.common.dll 이 이미 자리를 잡은 뒤라
+// OptiScaler 가 후킹에 실패하고 게임이 꺼진다. 호라이즌 로그에 그대로 찍힌다 —
+//   CheckWorkingMode sl.common.dll already in memory
+//   StreamlineHooks::hookDlss Failed to hook DLSS: 10DD
+// 그래서 스트림라인 게임에 dxgi.dll 을 줄지 말지를 이 표로 판단한다.
+// 파일 안에 글자가 있는지만 보면 안 된다. 안 부르는 게임의 exe 에도
+// "dxgi.dll" 글자는 흔히 들어 있다. 표를 직접 읽어야 한다.
+static bool EqNoCaseA(const char* a, const char* b) {
+    for (;; a++, b++) {
+        char x = *a, y = *b;
+        if (x >= 'A' && x <= 'Z') x = (char)(x - 'A' + 'a');
+        if (y >= 'A' && y <= 'Z') y = (char)(y - 'A' + 'a');
+        if (x != y) return false;
+        if (!x) return true;
+    }
+}
+
+// 표를 읽는 부분만 따로 뗐다. C++ 개체가 있는 함수에서는 __try 를 못 쓴다.
+static bool ScanImportTable(BYTE* b, size_t size, const char* want) {
+    bool found = false;
+    __try {
+        IMAGE_DOS_HEADER* dos = (IMAGE_DOS_HEADER*)b;
+        if (dos->e_magic != IMAGE_DOS_SIGNATURE) return false;
+        if ((size_t)dos->e_lfanew + sizeof(IMAGE_NT_HEADERS32) >= size) return false;
+        IMAGE_NT_HEADERS32* nt = (IMAGE_NT_HEADERS32*)(b + dos->e_lfanew);
+        if (nt->Signature != IMAGE_NT_SIGNATURE) return false;
+
+        WORD magic = nt->OptionalHeader.Magic;
+        IMAGE_DATA_DIRECTORY* dir = NULL;
+        IMAGE_SECTION_HEADER* sec = NULL;
+        WORD nsec = nt->FileHeader.NumberOfSections;
+        if (magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
+            IMAGE_NT_HEADERS64* n64 = (IMAGE_NT_HEADERS64*)nt;
+            dir = n64->OptionalHeader.DataDirectory;
+            sec = IMAGE_FIRST_SECTION(n64);
+        } else if (magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC) {
+            dir = nt->OptionalHeader.DataDirectory;
+            sec = IMAGE_FIRST_SECTION(nt);
+        } else {
+            return false;
+        }
+
+        const int kinds[2] = { IMAGE_DIRECTORY_ENTRY_IMPORT,
+                               IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT };
+        for (int k = 0; k < 2 && !found; k++) {
+            DWORD rva = dir[kinds[k]].VirtualAddress;
+            if (!rva) continue;
+
+            size_t p = 0;
+            for (WORD i = 0; i < nsec; i++) {
+                DWORD va = sec[i].VirtualAddress;
+                DWORD raw = sec[i].SizeOfRawData;
+                if (rva >= va && rva < va + (raw ? raw : 1)) {
+                    size_t off = sec[i].PointerToRawData + (rva - va);
+                    if (off < size) p = off;
+                    break;
+                }
+            }
+            if (!p) continue;
+
+            size_t step   = (k == 0) ? sizeof(IMAGE_IMPORT_DESCRIPTOR) : 32;
+            size_t nameAt = (k == 0) ? 12 : 4;
+            for (int i = 0; i < 4096 && !found; i++) {
+                size_t cur = p + (size_t)i * step;
+                if (cur + step >= size) break;
+                DWORD nameRva = *(DWORD*)(b + cur + nameAt);
+                if (!nameRva) break;
+
+                size_t np = 0;
+                for (WORD j = 0; j < nsec; j++) {
+                    DWORD va = sec[j].VirtualAddress;
+                    DWORD raw = sec[j].SizeOfRawData;
+                    if (nameRva >= va && nameRva < va + (raw ? raw : 1)) {
+                        size_t off = sec[j].PointerToRawData + (nameRva - va);
+                        if (off < size) np = off;
+                        break;
+                    }
+                }
+                if (!np) continue;
+
+                char nm[64];
+                int c = 0;
+                for (; c < 63 && np + (size_t)c < size; c++) {
+                    char ch = (char)b[np + c];
+                    if (!ch) break;
+                    nm[c] = ch;
+                }
+                nm[c] = 0;
+                if (EqNoCaseA(nm, want)) found = true;
+            }
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        found = false;
+    }
+    return found;
+}
+
+static bool ExeImportsDll(const std::wstring& exePath, const char* want) {
+    HANDLE f = CreateFileW(exePath.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL,
+                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (f == INVALID_HANDLE_VALUE) return false;
+    LARGE_INTEGER sz; sz.QuadPart = 0;
+    GetFileSizeEx(f, &sz);
+    if (sz.QuadPart < 0x200) { CloseHandle(f); return false; }
+    HANDLE m = CreateFileMappingW(f, NULL, PAGE_READONLY, 0, 0, NULL);
+    if (!m) { CloseHandle(f); return false; }
+    BYTE* b = (BYTE*)MapViewOfFile(m, FILE_MAP_READ, 0, 0, 0);
+    bool found = false;
+    if (b) found = ScanImportTable(b, (size_t)sz.QuadPart, want);
+    if (b) UnmapViewOfFile(b);
+    CloseHandle(m);
+    CloseHandle(f);
+    return found;
+}
+
+// 이 게임에서 전에 dxgi.dll 자리가 실패한 적이 있는가.
+// OptiScaler 가 남긴 기록에 그 흔적이 있으면 두 번 시도하지 않는다.
+static bool DxgiFailedBefore(const std::wstring& gameDir) {
+    std::string t = ReadFileBytes(gameDir + L"\\OptiScaler.log");
+    if (t.empty()) return false;
+    std::string l = LowerA(t);
+    return l.find("already in memory") != std::string::npos
+        || l.find("failed to hook dlss") != std::string::npos
+        || l.find("late streamline hook") != std::string::npos;
+}
+
+// winmm.dll 자리에서 스팀 오버레이에 막힌 적이 있는가.
+//
+// 2026-10-18. 추측으로 자리를 옮기지 않으려고 넣었다.
+// 라오어 1의 기록에 이 두 줄이 같이 있었다.
+//   CheckWorkingMode OptiScaler working as winmm.dll
+//   hkCreateDXGIFactory2 Skipping wrapping for: gameoverlayrenderer64.dll
+// 스팀 오버레이가 DXGI 를 먼저 쥐고 있어 OptiScaler 가 화면을 못 잡은 것이다.
+// 이 흔적이 그 PC 에 실제로 남아 있을 때만 dxgi.dll 로 옮긴다.
+// 잘 돌아가는 게임에는 이 흔적이 없으니 건드리지 않는다.
+static bool WinmmBlockedBefore(const std::wstring& gameDir) {
+    std::string t = ReadFileBytes(gameDir + L"\\OptiScaler.log");
+    if (t.empty()) return false;
+    std::string l = LowerA(t);
+    if (l.find("working as winmm.dll") == std::string::npos) return false;
+
+    // 비킨 적이 있고, 그런데도 팩토리를 하나도 못 감쌌으면 막힌 것이다.
+    // 누가 막았는지는 게임마다 다르다. 스팀 오버레이일 수도, 리세이드일 수도 있다.
+    // 이름으로 보지 않고 결과(감싼 개수)로 본다.
+    bool skipped = l.find("skipping wrapping for") != std::string::npos;
+    bool wrapped = l.find("wrappedidxgifactory") != std::string::npos;
+    return skipped && !wrapped;
+}
+
 static std::wstring ChooseProxyName(const std::wstring& gameDir, bool& vulkanGuess) {
+    // 이미 OptiScaler 가 들어가 있으면 무조건 그 자리를 쓴다.
+    // 이걸 먼저 안 보면 한 게임에 두 벌이 올라가 게임이 바로 꺼진다.
+    // 2026-10-09 위처3: dxgi.dll 에 이미 있는데 스트림라인 분기가 winmm.dll 을
+    // 먼저 고르는 바람에 두 벌이 됐다. 아래 순서 고르기보다 항상 앞에 와야 한다.
+    {
+        const wchar_t* all[] = { L"dxgi.dll", L"winmm.dll", L"version.dll", L"dbghelp.dll",
+                                 L"wininet.dll", L"winhttp.dll", L"d3d11.dll", L"d3d12.dll" };
+        for (int i = 0; i < (int)(sizeof(all) / sizeof(all[0])); i++) {
+            std::wstring p = gameDir + L"\\" + all[i];
+            if (!FileExists(p) || !IsOptiScalerFile(p)) continue;
+
+            // 다만 10-09 ~ 10-17 판이 스트림라인 게임을 winmm.dll 자리에
+            // 넣어 놨다면, 그 자리에서는 Insert 창이 영영 안 열린다.
+            // 그대로 두면 [설치]를 다시 눌러도 같은 자리에 머물러서
+            // 아무것도 안 고쳐진다. 그래서 그 경우만 치우고 dxgi.dll 로 옮긴다.
+            // dxgi.dll 이 비어 있을 때만 한다. 남이 쓰고 있으면 지금 자리가 최선이다.
+            // 2026-10-18: 옮겨도 되는 게임인지 먼저 본다. 호라이즌처럼
+            // dxgi.dll 을 직접 안 부르는 게임을 옮기면 게임이 꺼진다.
+            // ── 1.0.1.3 이 넣은 dxgi.dll 을 winmm.dll 로 되돌린다.
+            //
+            // 2026-10-18. 1.0.1.3 은 스트림라인 게임을 dxgi.dll 자리에 넣었고,
+            // 호라이즌처럼 늦게 올라오는 게임은 켜자마자 꺼졌다.
+            // 그런데 이 함수는 "이미 OptiScaler 가 있으면 그 자리를 쓴다"가 먼저라,
+            // 받으신 분이 [설치]를 다시 눌러도 dxgi 에 그대로 머물러 안 고쳐진다.
+            // 그래서 스트림라인 게임이 dxgi 자리에 있으면 치우고 winmm 으로 보낸다.
+            // [되돌리기]를 먼저 누르라고 안내할 수도 있지만, 그 줄을 지나치는
+            // 분이 반드시 나온다. 프로그램이 해야 한다.
+            // 단, dxgi 자리가 확인된 게임(위쳐3·라오어1)은 그대로 둔다.
+            std::wstring lg = LowerW(gameDir);
+            bool okHere = (lg.find(L"witcher 3") != std::wstring::npos)
+                       || (lg.find(L"the last of us part i") != std::wstring::npos);
+            // 2026-10-18 추가. "dxgi 자리에 있다"만 보면 안 된다.
+            // 붉은사막처럼 그 자리에서 잘 돌고 있는 게임까지 winmm 으로 돌려보내고,
+            // 그러면 다음 설치 때 또 dxgi 로 옮겨서 왔다 갔다 한다.
+            // 그 PC 에서 실제로 꺼진 흔적이 있을 때만 되돌린다.
+            if (LowerW(all[i]) == L"dxgi.dll" && !okHere
+                && FileExists(gameDir + L"\\sl.interposer.dll")
+                && !FileExists(gameDir + L"\\winmm.dll")
+                && DxgiFailedBefore(gameDir)) {
+                Log(L"  dxgi.dll 자리에 들어 있습니다. 스트림라인 게임에서는 게임이 꺼질 수 있는 자리입니다.");
+                Log(L"  winmm.dll 자리로 되돌립니다.");
+                if (DeleteFileW(p.c_str())) {
+                    Log(L"  옛 dxgi.dll 을 치웠습니다.");
+                    std::wstring bak = gameDir + L"\\" + BACKUP_DIR + L"\\dxgi.dll";
+                    if (FileExists(bak) && CopyFileW(bak.c_str(), p.c_str(), FALSE))
+                        Log(L"  게임에 원래 있던 dxgi.dll 을 제자리에 돌려놨습니다.");
+                    continue;   // 아래 순서 고르기로 내려가 winmm.dll 을 고른다
+                }
+                Log(L"  [경고] 옛 dxgi.dll 을 치우지 못했습니다. 게임을 끄고 다시 눌러 주세요.");
+            }
+
+            // winmm 자리에서 dxgi 자리로 옮기는 경우.
+            // 1.0.1.2 이하로 깔아 두신 분이 [설치]만 눌러도 옮겨져야 한다.
+            // 옮기는 조건은 둘 중 하나다.
+            //   1) dxgi 자리가 확인된 게임이다 (위쳐3·라오어1)
+            //   2) 그 PC 기록에 winmm 자리에서 막힌 흔적이 있고,
+            //      그 게임이 dxgi.dll 을 직접 불러오는 게임이다
+            std::wstring exeM = FindGameExe(gameDir);
+            bool stuck = (LowerW(all[i]) == L"winmm.dll")
+                      && FileExists(gameDir + L"\\sl.interposer.dll")
+                      && !FileExists(gameDir + L"\\dxgi.dll")
+                      && !DxgiFailedBefore(gameDir)
+                      && (okHere
+                          || (!exeM.empty() && ExeImportsDll(exeM, "dxgi.dll")
+                              && WinmmBlockedBefore(gameDir)));
+            if (stuck) {
+                Log(L"  winmm.dll 자리에 들어 있습니다. 이 자리에서는 Insert 창이 안 열립니다.");
+                Log(L"  dxgi.dll 자리가 비어 있어 그쪽으로 옮깁니다.");
+                if (DeleteFileW(p.c_str())) {
+                    Log(L"  옛 winmm.dll 을 치웠습니다.");
+                    std::wstring bak = gameDir + L"\\" + BACKUP_DIR + L"\\winmm.dll";
+                    if (FileExists(bak) && CopyFileW(bak.c_str(), p.c_str(), FALSE))
+                        Log(L"  게임에 원래 있던 winmm.dll 을 제자리에 돌려놨습니다.");
+                    continue;   // 아래 순서 고르기로 내려가 dxgi.dll 을 고른다
+                }
+                Log(L"  [경고] 옛 winmm.dll 을 치우지 못했습니다. 게임을 끄고 다시 눌러 주세요.");
+            }
+
+            Log(std::wstring(L"  이미 ") + all[i] + L" 에 OptiScaler 가 들어 있습니다. "
+                L"새 자리를 만들지 않고 그 파일을 갱신합니다.");
+            return all[i];
+        }
+    }
+
     std::wstring l = LowerW(gameDir);
     // 창에서 고르신 값이 우선이다. 0 = 자동, 1 = DirectX, 2 = Vulkan
     LRESULT sel = 0;
@@ -1113,16 +1505,132 @@ static std::wstring ChooseProxyName(const std::wstring& gameDir, bool& vulkanGue
     std::vector<std::wstring> order;
     if (vulkanGuess) order.push_back(L"winmm.dll");
 
-    // 엔비디아 스트림라인을 쓰는 게임이면 dxgi.dll 을 피한다.
-    // 스트림라인의 sl.interposer.dll 도 DXGI 를 가로채기 때문에
-    // 같은 이름을 쓰면 후킹 시점이 어긋난다. OptiScaler 가 화면에
-    // "Late Streamline hook detected" 를 띄우고, 게임에 따라
-    // slInit() 이 0x18 로 실패하거나 내장 그래픽으로 붙어 터진다.
-    if (FileExists(gameDir + L"\\sl.interposer.dll")) {
-        Log(L"  엔비디아 스트림라인을 쓰는 게임입니다. dxgi.dll 대신 winmm.dll 로 넣습니다.");
+    // GTA5 인핸스드는 dxgi.dll 을 아예 안 불러온다.
+    // GTA5_Enhanced.exe 의 가져오기 목록에 dxgi 가 없어서, 그 이름으로 넣으면
+    // 게임은 켜지는데 창이 안 뜬다. 오피스케일러 위키도 이 게임은
+    // dxgi 와 winmm 둘 다 적어 두었는데, 안 된다는 제보는 전부 dxgi 쪽이다.
+    // 2026-10-11 제보. 게임이 없어서 폴더로는 확인하지 못했다.
+    if (l.find(L"grand theft auto") != std::wstring::npos || l.find(L"gtav") != std::wstring::npos) {
+        Log(L"  GTA5 입니다. dxgi.dll 을 안 불러오는 게임이라 winmm.dll 로 넣습니다.");
+        Log(L"  이 게임은 런처의 BattlEye 를 끄지 않으면 설치해도 창이 안 뜹니다.");
         bool has = false;
         for (size_t j = 0; j < order.size(); j++) if (order[j] == L"winmm.dll") has = true;
         if (!has) order.push_back(L"winmm.dll");
+        order.push_back(L"version.dll");
+    }
+
+    // 엔비디아 스트림라인을 쓰는 게임. 여기서 두 번 데었으니 기록을 길게 남긴다.
+    //
+    // 2026-09-19 (1.0.0.5) 데스스트랜딩·NBA 2K27 제보.
+    //   dxgi.dll 자리에 넣었더니 slInit() 이 0x18 로 실패하고 화면에 뜬다 —
+    //     Late Streamline hook detected
+    //     Consider renaming OptiScaler from dxgi.dll to other supported name
+    //   그래서 스트림라인 게임은 무조건 winmm.dll 로 보내게 했다.
+    //
+    // 2026-10-17 라오어 1. winmm.dll 자리에서는 Insert 창이 안 열린다.
+    //   스팀 오버레이가 DXGI 를 먼저 가로채서 OptiScaler 가 전부 건너뛴다 —
+    //     hkCreateDXGIFactory2 Skipping wrapping for: gameoverlayrenderer64.dll
+    //   dxgi.dll 로 옮기니 바로 열렸다. 그래서 전부 dxgi 로 되돌렸다. 틀렸다.
+    //
+    // 2026-10-18 호라이즌. 그 판으로 설치했더니 게임이 켜자마자 꺼졌다 —
+    //     CheckWorkingMode sl.common.dll already in memory
+    //     StreamlineHooks::hookDlss Failed to hook DLSS: 10DD
+    //
+    // 두 사고를 같이 설명하는 것은 하나뿐이다. **exe 의 가져오기 표**다.
+    //   라오어   dxgi.dll 을 표에 적어 둔다  → 게임과 동시에 올라온다 → 안 늦다
+    //   호라이즌 안 적어 둔다               → 나중에 올라온다 → 스트림라인이 먼저다
+    // 적어 둔 게임에만 dxgi 를 준다. 나머지는 9월 그대로 winmm 이다.
+    //
+    // 추측으로 전체를 바꾸지 않는다. 그 PC 의 기록에 실패 흔적이 있으면
+    // 표와 무관하게 winmm 으로 간다.
+    if (FileExists(gameDir + L"\\sl.interposer.dll")) {
+        std::wstring exe = FindGameExe(gameDir);
+        bool importsDxgi = !exe.empty() && ExeImportsDll(exe, "dxgi.dll");
+        bool blocked = WinmmBlockedBefore(gameDir);
+        bool failedBefore = DxgiFailedBefore(gameDir);
+
+        // ── 직접 켜서 확인한 게임만 dxgi.dll 을 준다.
+        //
+        // winmm.dll 자리에서는 DXGI 를 먼저 쥔 쪽(스팀 오버레이, 우리 리세이드)에
+        // 막혀 Insert 창이 안 열린다. dxgi.dll 자리는 그 문제가 없지만,
+        // 호라이즌처럼 늦게 올라오는 게임에서는 게임이 꺼진다.
+        // 둘 다 오늘(2026-10-18) 직접 켜서 확인했다.
+        //
+        //   위쳐3      dxgi 정상. 오류 0건. 라이브로도 몇 시간 돌았다
+        //   라오어 1   dxgi 에서 Insert·F7 정상
+        //   호라이즌   dxgi 에서 꺼짐 → winmm
+        //
+        // 확인 안 한 게임은 9월에 확인된 winmm 으로 간다. 추측으로 넓히지 않는다.
+        // 새 게임을 넣으려면 그 게임을 켜서 확인하고 한 줄 추가할 것.
+        bool knownGood = (l.find(L"witcher 3") != std::wstring::npos)
+                      || (l.find(L"the last of us part i") != std::wstring::npos);
+
+        // dxgi.dll 자리에서 터지는 것이 확인된 게임. 무조건 winmm 으로 보낸다.
+        //
+        //   프래그마타  2026-10-18 두 번 터짐.
+        //               D3d12Proxy::Hook_D3D12CreateDevice Failed to hook: 10DD
+        //               exe 가 dxgi.dll 을 직접 부르는데도 안 된다.
+        //               9월(1.0.0.5)에 winmm 자리에서 정상 확인된 게임이다.
+        //
+        // exe 가 dxgi 를 직접 부르면 안전하다는 판단이 이 게임에서 틀렸다.
+        // 켜 보기 전에는 알 수 없으니, 터진 게임은 이름으로 적어 둔다.
+        // ── dxgi.dll 자리에서 꺼지는 것이 확인된 게임.
+        //
+        // 프래그마타 (2026-10-18, 여러 번 확인)
+        //   순정                     잘 켜진다
+        //   dxgi 자리에 설치          첫 실행만 켜지고 두 번째부터 안 켜진다
+        //   리세이드를 빼고 설치해도   똑같다. 리세이드 탓이 아니다
+        //   9월(1.0.0.5)에는 winmm 자리에서 정상 확인된 게임이다
+        //
+        // exe 가 dxgi.dll 을 직접 부르니 안전할 것이라고 봤는데 이 게임에서 틀렸다.
+        // 켜 보기 전에는 알 수 없으므로, 터진 게임은 이름으로 적어 둔다.
+        bool knownBad = (l.find(L"pragmata") != std::wstring::npos);
+        if (knownBad) {
+            Log(L"  엔비디아 스트림라인을 쓰는 게임입니다.");
+            Log(L"  이 게임은 dxgi.dll 자리에서 꺼지는 것이 확인됐습니다. winmm.dll 로 넣습니다.");
+            bool hasW = false;
+            for (size_t j = 0; j < order.size(); j++) {
+                if (order[j] == L"winmm.dll") { hasW = true; }
+            }
+            if (!hasW) { order.push_back(L"winmm.dll"); }
+            order.push_back(L"version.dll");
+            order.push_back(L"dbghelp.dll");
+            knownGood = false;
+        }
+        if (knownBad) {
+            // 위에서 이미 정했다
+        } else if (knownGood && !failedBefore) {
+            Log(L"  엔비디아 스트림라인을 쓰는 게임입니다.");
+            Log(L"  이 게임은 dxgi.dll 자리에서 확인된 게임이라 그쪽으로 넣습니다.");
+            bool has = false;
+            for (size_t j = 0; j < order.size(); j++) if (order[j] == L"dxgi.dll") has = true;
+            if (!has) order.push_back(L"dxgi.dll");
+            order.push_back(L"winmm.dll");
+            order.push_back(L"version.dll");
+            order.push_back(L"dbghelp.dll");
+        // 2026-10-18. exe 가 dxgi.dll 을 직접 부르는 게임이면 처음부터 dxgi 에 넣는다.
+        // 호라이즌이 dxgi 자리에서 꺼진 이유는 늦게 올라와서였다 —
+        //   CheckWorkingMode sl.common.dll already in memory
+        // exe 가 직접 부르는 이름은 게임이 켜지는 순간 같이 올라오니 늦을 수가 없다.
+        // 전에는 여기에 '로그에 막힌 기록이 있을 때만' 이라는 단서가 있었는데,
+        // 그러면 설치를 두 번 눌러야 한다. 두 번 누르는 사람은 없다.
+        //   라오어1 부름 -> dxgi 확인됨 / 붉은사막 부름 -> dxgi 확인됨(팩토리 91개)
+        //   호라이즌 안부름 -> winmm 확인됨
+        } else if (importsDxgi && !failedBefore) {
+            Log(L"  엔비디아 스트림라인을 쓰는 게임입니다.");
+            Log(L"  이 게임은 dxgi.dll 을 직접 불러오니 그쪽으로 넣습니다.");
+            bool has = false;
+            for (size_t j = 0; j < order.size(); j++) if (order[j] == L"dxgi.dll") has = true;
+            if (!has) order.push_back(L"dxgi.dll");
+            order.push_back(L"winmm.dll");
+        } else {
+            Log(L"  엔비디아 스트림라인을 쓰는 게임입니다. winmm.dll 로 넣습니다.");
+            if (blocked && !importsDxgi)
+                Log(L"  (막힌 기록은 있지만 이 게임은 dxgi.dll 을 직접 안 불러옵니다. 옮기면 꺼집니다)");
+            bool has = false;
+            for (size_t j = 0; j < order.size(); j++) if (order[j] == L"winmm.dll") has = true;
+            if (!has) order.push_back(L"winmm.dll");
+        }
         order.push_back(L"version.dll");
         order.push_back(L"dbghelp.dll");
     }
@@ -1323,6 +1831,48 @@ static bool SetIniKey(const std::wstring& iniPath, const char* wantSec,
     std::string out;
     for (size_t i = 0; i < lines.size(); i++) out += lines[i];
     return WriteFileBytes(iniPath, out);
+}
+
+
+// ini 에서 값 하나를 읽는다. 없으면 빈 문자열.
+static std::string GetIniKey(const std::wstring& iniPath, const char* wantSec,
+                             const char* wantKey) {
+    const char NL = (char)10;
+    static const char WSCH[] = { 32, (char)9, (char)13, 0 };
+    std::string text = ReadFileBytes(iniPath);
+    if (text.empty()) return "";
+    std::string want = std::string("[") + wantSec + "]";
+    std::string section;
+    size_t start = 0;
+    while (start <= text.size()) {
+        size_t nl = text.find(NL, start);
+        std::string t = (nl == std::string::npos) ? text.substr(start)
+                                                  : text.substr(start, nl - start);
+        start = (nl == std::string::npos) ? text.size() + 1 : nl + 1;
+
+        size_t a = t.find_first_not_of(WSCH);
+        if (a == std::string::npos) continue;
+        if (t[a] == ';') continue;
+        if (t[a] == '[') {
+            size_t b = t.find(']', a);
+            if (b != std::string::npos) section = t.substr(a, b - a + 1);
+            continue;
+        }
+        if (section != want) continue;
+        size_t eq = t.find('=');
+        if (eq == std::string::npos) continue;
+        std::string key = t.substr(a, eq - a);
+        size_t ke = key.find_last_not_of(WSCH);
+        if (ke == std::string::npos) continue;
+        key.erase(ke + 1);
+        if (LowerA(key) != LowerA(wantKey)) continue;
+        std::string val = t.substr(eq + 1);
+        size_t vs = val.find_first_not_of(WSCH);
+        if (vs == std::string::npos) return "";
+        size_t ve = val.find_last_not_of(WSCH);
+        return val.substr(vs, ve - vs + 1);
+    }
+    return "";
 }
 
 // 다운로드 폴더에 받아 둔 압축 파일에서 신경망 파일만 꺼낸다
@@ -1691,8 +2241,25 @@ static std::wstring FetchLatestOptiUrl() {
 // 고정값을 쓰면 4K 에서는 감당이 안 되고, 1440p 이하에서는 쓸데없이 흐려진다.
 // 목표는 대략 260만 화소(=2172x1222 쯤) 언저리에서 도는 것이다.
 static int PickWorkResolution(int& wOut, int& hOut) {
-    int w = GetSystemMetrics(SM_CXSCREEN);
-    int h = GetSystemMetrics(SM_CYSCREEN);
+    // 2026-10-20. GetSystemMetrics 는 윈도우 화면 배율이 걸려 있으면 줄어든 값을 준다.
+    // 대표님 4K 화면에 150% 배율이 걸려 있어 2560x1440 으로 읽혔고,
+    // 그래서 "1440p 이하"로 판단해 처리 해상도를 100% 로 정했다.
+    // 4K 100% 는 33fps 다. 받으신 분이 배율을 쓰면 처음부터 그 상태로 시작한다.
+    //   3840 / 1.5 = 2560     2160 / 1.5 = 1440
+    // EnumDisplaySettings 는 배율과 무관하게 실제 화소 수를 준다.
+    int w = 0;
+    int h = 0;
+    DEVMODEW dm;
+    ZeroMemory(&dm, sizeof(dm));
+    dm.dmSize = sizeof(dm);
+    if (EnumDisplaySettingsW(NULL, ENUM_CURRENT_SETTINGS, &dm)) {
+        w = (int)dm.dmPelsWidth;
+        h = (int)dm.dmPelsHeight;
+    }
+    if (w <= 0 || h <= 0) {
+        w = GetSystemMetrics(SM_CXSCREEN);
+        h = GetSystemMetrics(SM_CYSCREEN);
+    }
     if (w <= 0 || h <= 0) { w = 1920; h = 1080; }
     wOut = w; hOut = h;
 
@@ -1707,6 +2274,320 @@ static int PickWorkResolution(int& wOut, int& hOut) {
     if (pct > 100) pct = 100;
     return pct;
 }
+// a 가 b 보다 새 파일인가. 둘 중 하나라도 없으면 거짓이다.
+static bool IsNewerThan(const std::wstring& a, const std::wstring& b) {
+    WIN32_FILE_ATTRIBUTE_DATA fa, fb;
+    if (!GetFileAttributesExW(a.c_str(), GetFileExInfoStandard, &fa)) return false;
+    if (!GetFileAttributesExW(b.c_str(), GetFileExInfoStandard, &fb)) return false;
+    return CompareFileTime(&fa.ftLastWriteTime, &fb.ftLastWriteTime) > 0;
+}
+
+// 실행 파일 안에 그 문자열이 있는지 본다. DX11 인지 DX12 인지 가리는 데 쓴다.
+static bool ExeHasString(const std::wstring& path, const char* needle) {
+    HANDLE h = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL,
+                           OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    std::string want(needle);
+    std::vector<char> buf(1 << 20);
+    std::string tail; DWORD got = 0; bool hit = false;
+    while (!hit && ReadFile(h, &buf[0], (DWORD)buf.size(), &got, NULL) && got > 0) {
+        std::string chunk = tail;
+        for (DWORD i = 0; i < got; i++) {
+            char c = buf[i];
+            if (c == 0) continue;
+            if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+            chunk.push_back(c);
+        }
+        if (chunk.find(want) != std::string::npos) hit = true;
+        tail = (chunk.size() > 32) ? chunk.substr(chunk.size() - 32) : chunk;
+    }
+    CloseHandle(h);
+    return hit;
+}
+
+// ── 스트림라인 게임에서 프레임 생성이 돌게 해 준다.
+// OptiScaler 가 DLSSG 를 출력으로 쓰려면 sl.*.dll 을 자기 폴더 안에 따로
+// 들고 있어야 한다. 없으면 게임 안에서
+// "Can't init DLSSG Output / Are you missing the streamline folder?" 가 뜨고
+// 프레임 생성이 아예 안 걸린다. OptiScaler.ini 에도 적혀 있다 —
+//   dlssg - requires streamline dlls inside 'OptiScaler/streamline' folder
+// 게임 폴더의 것을 복사만 한다. 원본은 건드리지 않는다.
+// 2026-10-15 위처3 리마스터 + RTX 5070 Ti 에서 확인. 43 → 78 프레임.
+static void SetupStreamlineForFg(const std::wstring& gameDir,
+                                 std::vector<std::wstring>& added) {
+    if (!FileExists(gameDir + L"\\sl.interposer.dll")) return;
+    if (!FileExists(gameDir + L"\\nvngx_dlssg.dll")) {
+        Log(L"  스트림라인 게임인데 nvngx_dlssg.dll 이 없습니다. 프레임 생성 준비는 건너뜁니다.");
+        return;
+    }
+    CreateDirectoryW((gameDir + L"\\OptiScaler").c_str(), NULL);
+    std::wstring dir = gameDir + L"\\OptiScaler\\streamline";
+    CreateDirectoryW(dir.c_str(), NULL);
+
+    int n = 0;
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW((gameDir + L"\\sl.*.dll").c_str(), &fd);
+    if (h != INVALID_HANDLE_VALUE) {
+        do {
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+            std::wstring name = fd.cFileName;
+            if (CopyFileW((gameDir + L"\\" + name).c_str(),
+                          (dir + L"\\" + name).c_str(), FALSE)) {
+                added.push_back(std::wstring(L"OptiScaler\\streamline\\") + name);
+                n++;
+            }
+        } while (FindNextFileW(h, &fd));
+        FindClose(h);
+    }
+    if (n == 0) {
+        Log(L"  스트림라인 파일을 복사하지 못했습니다. 프레임 생성 준비는 건너뜁니다.");
+        return;
+    }
+    wchar_t b[200];
+    swprintf_s(b, L"  프레임 생성 준비: 스트림라인 파일 %d개를 넣었습니다.", n);
+    Log(b);
+
+    // ini 에 FGInput/FGOutput 을 써 넣지 않는다.
+    // 1.0.1.1 에서 dlssg 로 써 넣었더니 "매니저로 잘 쓰던 위쳐3가 켜자마자 튕긴다"는
+    // 제보가 왔다. 창에서 손으로 고르면 게임이 다 뜬 뒤라 실패해도 에러 글만 뜨는데,
+    // ini 에 있으면 시작하는 도중에 시도해서 창을 띄울 기회도 없이 꺼진다.
+    // 파일만 제자리에 놓고, 켜는 건 쓰실 분이 창에서 하도록 둔다.
+    // 2026-10-15 제보. 1.0.1.2 에서 뺐다.
+
+    // 1.0.1.1 로 이미 설치하신 분은 ini 에 그 값이 박혀 있다. 되돌리기는 ini 를
+    // 사용자 설정으로 보고 안 건드리므로, 다시 설치해도 그대로 남아 계속 튕긴다.
+    // 그래서 우리가 썼던 값과 똑같을 때만 기본값으로 돌려놓는다.
+    // 직접 dlssg 로 바꿔 쓰시던 분의 값까지 건드리게 되지만, 창에서 한 번만
+    // 다시 고르면 되는 일이라 튕기는 쪽을 막는 게 낫다.
+    std::wstring ini = gameDir + L"\\OptiScaler.ini";
+    std::string fin  = GetIniKey(ini, "FrameGen", "FGInput");
+    std::string fout = GetIniKey(ini, "FrameGen", "FGOutput");
+    if (LowerA(fin) == "dlssg" && LowerA(fout) == "dlssg") {
+        SetIniKey(ini, "FrameGen", "FGInput",  "auto");
+        SetIniKey(ini, "FrameGen", "FGOutput", "auto");
+        Log(L"  1.0.1.1 이 넣었던 프레임 생성 설정을 기본값으로 되돌렸습니다.");
+        Log(L"  그 설정 때문에 게임이 켜자마자 꺼지는 제보가 있었습니다.");
+    }
+}
+
+// ── A 모드(옵티스케일러)에도 리세이드를 같이 넣는다.
+// dxgi.dll 은 옵티스케일러가 쓰고 있으므로 비어 있는 다른 이름을 골라야 한다.
+// 리세이드는 그래픽 API 이름으로만 들어간다. version.dll 이나 winmm.dll 은 못 쓴다.
+// 이걸 안 해 주면, 나중에 리세이드를 넣으려는 사람이
+// "dxgi.dll already exists, but does not belong to ReShade" 에서 막히고
+// 모르고 덮어쓰면 DLSS 5 가 통째로 날아간다. (2026-10-09 위처3에서 확인)
+// 전에 우리가 넣어둔 리세이드를 치운다.
+//
+// 2026-10-18. 리세이드를 안 넣기로 한 경우(매니저가 들고 있거나, 창에서 끄셨거나)
+// 새로 안 넣는 것만으로는 부족하다. 전에 넣어둔 것이 그대로 남아 돌기 때문이다.
+// 레데리2에서 두 벌이 올라와 나중 것이 스스로 꺼지는 것을 확인했다.
+// 우리가 넣은 것인지 확인하고 지운다. 남의 것은 건드리지 않는다.
+static void RemoveOurReShade(const std::wstring& gameDir) {
+    const wchar_t* names[] = { L"d3d11.dll", L"d3d12.dll", L"dxgi.dll",
+                               L"opengl32.dll", L"d3d9.dll" };
+    int n = 0;
+    for (int i = 0; i < 5; i++) {
+        std::wstring p = gameDir + L"\\" + names[i];
+        if (!IsReShadeFile(p)) continue;
+        if (DeleteFileW(p.c_str())) {
+            Log(std::wstring(L"  전에 넣어둔 리세이드를 치웠습니다: ") + names[i]);
+            n++;
+        } else {
+            Log(std::wstring(L"  [경고] 리세이드를 치우지 못했습니다: ") + names[i]);
+        }
+    }
+    // 2026-10-18. 효과 파일(reshade-shaders)은 지우지 않는다.
+    // 레데리2에서 지웠더니 매니저로 깔린 리세이드가 이렇게 띄웠다 —
+    //   구성된 이펙트 검색 경로에서 이펙트 파일(.fx)을 찾을 수 없습니다
+    // 그 폴더는 어느 리세이드가 떠도 같이 쓴다. dll 만 치우면 된다.
+    (void)n;
+}
+
+// 리세이드 매니저가 이 게임을 이미 들고 있는가.
+//
+// 2026-10-18 레데리2에서 확인. 매니저로 깐 분들은 게임 폴더가 아니라
+//   C:\ProgramData\ReShade\ReShadeApps.ini
+// 에 게임 실행 파일 경로가 적혀 있고, 매니저가 게임이 켜질 때 자기 리세이드를
+// 끼워 넣는다. 우리가 모르고 하나 더 넣으면 두 벌이 올라오고, 나중 것이
+// 스스로 죽는다. ReShade.log1 에 그대로 찍힌다 —
+//   Another ReShade instance was already loaded! Aborting initialization
+// 그래서 그런 게임에는 우리 리세이드를 넣지 않는다. 매니저 것을 그대로 쓰시면 된다.
+static bool ReShadeManagerHasGame(const std::wstring& gameDir) {
+    wchar_t pd[MAX_PATH] = {0};
+    DWORD n = GetEnvironmentVariableW(L"ProgramData", pd, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) return false;
+    std::wstring ini = std::wstring(pd) + L"\\ReShade\\ReShadeApps.ini";
+    std::string raw = ReadFileBytes(ini);
+    if (raw.empty()) return false;
+
+    // 파일은 UTF-8(BOM 있을 수 있음)이다. 경로 비교는 소문자로 한다.
+    std::wstring apps = LowerW(U2W(raw));
+    std::wstring dir  = LowerW(gameDir);
+    for (size_t i = 0; i < dir.size(); i++) if (dir[i] == L'/') dir[i] = L'\\';
+    return apps.find(dir) != std::wstring::npos;
+}
+
+static bool InstallReShadeBeside(const std::wstring& gameDir, const std::wstring& optiProxy,
+                                 std::vector<std::wstring>& added) {
+    // 이미 리세이드가 있으면 손대지 않는다.
+    // 다만 ReShade.log 가 없으면 한 번도 뜨지 못한 것이다. 리세이드는 뜰 때 그 파일을 만든다.
+    // 게임마다 d3d11 인지 d3d12 인지 미리 맞히기가 어려워서, 틀렸으면 여기서 반대쪽으로 옮긴다.
+    // 사용자는 "창이 안 뜨면 설치를 한 번 더" 만 알면 된다. (2026-10-09)
+    {
+        const wchar_t* rsHooks[] = { L"d3d11.dll", L"d3d12.dll", L"dxgi.dll", L"opengl32.dll", L"d3d9.dll" };
+        std::wstring have;
+        for (int i = 0; i < (int)(sizeof(rsHooks) / sizeof(rsHooks[0])); i++) {
+            std::wstring p = gameDir + L"\\" + rsHooks[i];
+            if (FileExists(p) && IsReShadeFile(p)) { have = rsHooks[i]; break; }
+        }
+        if (!have.empty()) {
+            if (FileExists(gameDir + L"\\ReShade.log")) {
+                Log(L"  리세이드는 이미 있고 잘 뜨고 있습니다. 그대로 둡니다.");
+                // 2026-10-18. 그대로 두더라도 기록에는 적는다.
+                // 안 적으면 다음 [되돌리기] 때 이 파일이 남아서,
+                // 설치 전으로 돌아갔다고 해놓고 리세이드만 남는다.
+                added.push_back(have);
+                return true;
+            }
+            // 로그가 없다고 바로 틀렸다고 보면 안 된다. 아직 게임을 안 켰을 수도 있다.
+            // 옵티스케일러는 게임이 돌 때마다 자기 로그를 갱신한다.
+            // 그게 리세이드 dll 보다 새것일 때만 "켰는데도 안 떴다"가 성립한다.
+            if (!IsNewerThan(gameDir + L"\\OptiScaler.log", gameDir + L"\\" + have)) {
+                Log(L"  리세이드는 이미 있습니다. 아직 게임을 켜지 않으신 것 같아 그대로 둡니다.");
+                Log(L"  게임을 켜고 8 을 눌러도 창이 안 뜨면 설치를 한 번 더 눌러 주세요.");
+                added.push_back(have);
+                return true;
+            }
+            std::wstring other;
+            if (LowerW(have) == L"d3d11.dll")      other = L"d3d12.dll";
+            else if (LowerW(have) == L"d3d12.dll") other = L"d3d11.dll";
+            if (other.empty() || FileExists(gameDir + L"\\" + other)) {
+                Log(L"  리세이드는 이미 있습니다. 그대로 둡니다.");
+                added.push_back(have);
+                return true;
+            }
+            Log(L"  리세이드가 " + have + L" 로 있는데 ReShade.log 가 없습니다. 한 번도 뜨지 못한 것입니다.");
+            Log(L"  이름이 맞지 않는 것으로 보고 " + other + L" 로 옮겨 봅니다.");
+            if (MoveFileW((gameDir + L"\\" + have).c_str(), (gameDir + L"\\" + other).c_str())) {
+                added.push_back(other);
+                Log(L"  옮겼습니다. 게임을 켜고 숫자 8 키를 눌러 보세요.");
+            } else {
+                wchar_t eb[200];
+                swprintf_s(eb, L"  [건너뜀] 옮기지 못했습니다 (윈도우 오류 %lu)", GetLastError());
+                Log(eb);
+            }
+            return true;
+        }
+    }
+
+    std::wstring rsSrc = SelfDir() + L"\\" + DATA_DIR + L"\\" + RS_DIR;
+    if (!DirExists(rsSrc)) {
+        Log(L"  [건너뜀] 리세이드 재료가 프로그램 옆에 없습니다.");
+        return false;
+    }
+
+    // DX11 인지 DX12 인지 가린다. 한 가지만 봐서는 안 된다.
+    // 엔비디아 스트림라인을 쓰는 게임은 exe 안에 D3D dll 이름이 아예 없다.
+    // sl.interposer.dll 이 대신 들고 있기 때문이다.
+    // 2026-10-09 위처3(bin\x64_dx12)에서 d3d12/d3d11/dxgi 세 문자열이 모두 없었고,
+    // 그래서 DX11 로 잘못 보고 리세이드를 d3d11.dll 로 넣었다.
+    std::wstring exe = FindGameExe(gameDir);
+    std::wstring lowdir = LowerW(gameDir);
+    bool dx12 = false;
+    const wchar_t* why = L"";
+    if (lowdir.find(L"dx12") != std::wstring::npos || lowdir.find(L"d3d12") != std::wstring::npos) {
+        dx12 = true; why = L"폴더 이름";
+    }
+    if (!dx12 && !exe.empty() && ExeHasString(exe, "d3d12.dll")) {
+        dx12 = true; why = L"실행 파일 안의 이름";
+    }
+    if (!dx12) {
+        WIN32_FIND_DATAW fd;
+        HANDLE hf = FindFirstFileW((gameDir + L"\\*d3d12*").c_str(), &fd);
+        if (hf != INVALID_HANDLE_VALUE) { FindClose(hf); dx12 = true; why = L"폴더 안의 d3d12 파일"; }
+    }
+
+    std::vector<std::wstring> order;
+    // ── 2026-10-18. dxgi.dll 자리가 비어 있으면 리세이드를 거기 넣는다.
+    //
+    // 왜 : 리세이드가 d3d12.dll 자리에 있으면 그쪽이 DXGI 팩토리를 만든다.
+    // 그러면 winmm.dll 자리에 있는 DLSS 5 가 "부르는 쪽이 게임이 아니다" 라며
+    // 비켜서, 화면을 한 번도 못 잡는다. Insert 창이 안 열린다.
+    // 붉은사막에서 팩토리 0개 · 스왑체인 0개로 확인했다.
+    //
+    // 리세이드가 dxgi.dll 자리인 게임에서는 그런 일이 없었다.
+    //   섀도우 툼레이더  리세이드 dxgi + DLSS 5 winmm   팩토리 14개, 창 뜸
+    //   9월 위쳐3       같은 배치에서 정상이었다 (STATUS.md 1.0.0.5)
+    //
+    // DLSS 5 가 dxgi 를 쓰는 게임(위쳐3·라오어1)은 그대로 d3d12 로 간다.
+    // 스트림라인 게임이면서 DLSS 5 가 winmm 자리인 경우에만 바꾼다.
+    // 그 조합에서만 리세이드가 DXGI 를 쥐어 DLSS 5 를 막는다.
+    // 나머지 게임은 지금 잘 되고 있으니 건드리지 않는다.
+    // 2026-10-18. 리세이드를 dxgi 자리로 보냈다가 프래그마타가 터져서 되돌렸다.
+    if (dx12) { order.push_back(L"d3d12.dll"); order.push_back(L"d3d11.dll"); }
+    else      { order.push_back(L"d3d11.dll"); order.push_back(L"d3d12.dll"); }
+    if (LowerW(optiProxy) == L"dxgi.dll") order.push_back(L"dxgi.dll");
+    order.push_back(L"opengl32.dll");
+
+    std::wstring name;
+    for (size_t i = 0; i < order.size(); i++) {
+        if (LowerW(order[i]) == LowerW(optiProxy)) continue;
+        if (FileExists(gameDir + L"\\" + order[i])) continue;
+        name = order[i]; break;
+    }
+    if (name.empty()) {
+        Log(L"  [건너뜀] 리세이드를 넣을 빈 이름이 없습니다. 쓰시려면 직접 넣으셔야 합니다.");
+        return false;
+    }
+
+    Status(L"리세이드를 같이 넣는 중입니다...");
+    if (dx12) Log(std::wstring(L"  이 게임은 DirectX 12 로 보입니다. (") + why + L")");
+    else      Log(L"  이 게임은 DirectX 11 로 보입니다.");
+    if (!CopyFileW((rsSrc + L"\\" + RS_DLL).c_str(), (gameDir + L"\\" + name).c_str(), TRUE)) {
+        wchar_t eb[220];
+        swprintf_s(eb, L"  [건너뜀] 리세이드를 넣지 못했습니다 (윈도우 오류 %lu)", GetLastError());
+        Log(eb);
+        return false;
+    }
+    added.push_back(name);
+    Log(L"  리세이드를 " + name + L" 로 넣었습니다. (dxgi.dll 은 DLSS 5 가 쓰고 있습니다)");
+
+    std::wstring iniDst = gameDir + L"\\" + RS_INI;
+    if (FileExists(iniDst)) {
+        // 남의 ReShade.ini 는 그대로 둔다. 다만 창 여는 키만큼은 맞춰 넣는다.
+        // 안 그러면 리세이드가 자기 기본 키(Home)로 열리는데 우리는 8 이라고
+        // 안내해서, 8 을 눌러도 안 뜨고 Home 을 누르면 모르는 창이 뜬다.
+        // 2026-10-15 제보. 에픽판 위쳐3, 316바이트짜리 ReShade.ini 가 있던 경우.
+        SetIniKey(iniDst, "INPUT", "KeyOverlay", "56,0,0,0");
+        // 2026-10-18 제보. 게임 설정 화면을 누르면 10초쯤 멈춘다는 분이 계셨다.
+        // 효과 파일을 886개 넣어드리는데 이 값이 0 이면 꺼둔 효과까지 전부 읽는다.
+        // 화면을 다시 만드는 자리마다 그만큼 멈춘다. 1 이면 켜 둔 것만 읽는다.
+        // PerformanceMode 는 건드리지 않는다. 그걸 켜면 창에서 값을 못 바꾼다.
+        Log(L"  ReShade.ini 는 이미 있어 그대로 둡니다. 창 여는 키만 숫자 8 로 맞췄습니다.");
+    } else if (CopyFileW((rsSrc + L"\\" + RS_INI).c_str(), iniDst.c_str(), TRUE)) {
+        added.push_back(RS_INI);
+        Log(L"  ReShade.ini 를 넣었습니다. (숫자 8 키로 창이 열립니다. Insert 는 DLSS 5 창입니다)");
+    }
+
+    std::wstring shDst = gameDir + L"\\" + RS_SHADERS;
+    if (HasFxFiles(shDst, 3)) {
+        Log(L"  reshade-shaders 는 이미 있어 건드리지 않습니다.");
+    } else if (DirExists(rsSrc + L"\\" + RS_SHADERS)) {
+        Status(L"효과 파일을 넣는 중입니다...");
+        std::vector<std::wstring> got;
+        CopyTree(rsSrc + L"\\" + RS_SHADERS, shDst, got);
+        // 폴더째로 적지 않고 넣은 파일만 하나씩 적는다.
+        // 폴더로 적으면 되돌리기가 통째로 지워서, 사용자가 나중에 넣은
+        // 셰이더나 프리셋까지 같이 날아간다.
+        for (size_t i = 0; i < got.size(); i++)
+            added.push_back(std::wstring(RS_SHADERS) + L"\\" + got[i]);
+        wchar_t b[160];
+        swprintf_s(b, L"  reshade-shaders 를 넣었습니다. (파일 %d개)", (int)got.size());
+        Log(b);
+    }
+    return true;
+}
+
 // ── B 모드 준비: DLSS5-Feeder 를 넣는다.
 // 게임에 DLSS 가 없으면 가로챌 NGX 호출 자체가 없다. Feeder 가 그 호출을 만들어 주고,
 // 이어서 넣는 OptiScaler DLSS-NR 이 신경망 패스를 건다.
@@ -1754,10 +2635,11 @@ static bool InstallFeeder(const std::wstring& gameDir, std::vector<std::wstring>
 
         std::wstring iniDst = gameDir + L"\\" + RS_INI;
         if (FileExists(iniDst)) {
-            Log(L"  ReShade.ini 는 이미 있어 건드리지 않습니다.");
-        } else if (CopyFileW((rsSrc + L"\\" + RS_INI).c_str(), iniDst.c_str(), TRUE)) {
+            SetIniKey(iniDst, "INPUT", "KeyOverlay", "56,0,0,0");
+                Log(L"  ReShade.ini 는 이미 있어 그대로 둡니다. 창 여는 키만 숫자 8 로 맞췄습니다.");
+            } else if (CopyFileW((rsSrc + L"\\" + RS_INI).c_str(), iniDst.c_str(), TRUE)) {
             added.push_back(RS_INI);
-            Log(L"  ReShade.ini 를 넣었습니다. (Insert 키로 창이 열립니다)");
+            Log(L"  ReShade.ini 를 넣었습니다. (숫자 8 키로 창이 열립니다)");
         }
 
         std::wstring shDst = gameDir + L"\\" + RS_SHADERS;
@@ -1769,10 +2651,12 @@ static bool InstallFeeder(const std::wstring& gameDir, std::vector<std::wstring>
             Status(L"효과 파일을 넣는 중입니다...");
             std::vector<std::wstring> got;
             CopyTree(rsSrc + L"\\" + RS_SHADERS, shDst, got);
+            // 폴더째로 적지 않고 넣은 파일만 하나씩 적는다. (위 InstallReShadeBeside 와 같은 이유)
+            for (size_t i = 0; i < got.size(); i++)
+                added.push_back(std::wstring(RS_SHADERS) + L"\\" + got[i]);
             wchar_t b[160];
             swprintf_s(b, L"  reshade-shaders 를 넣었습니다. (파일 %d개)", (int)got.size());
             Log(b);
-            added.push_back(RS_SHADERS);
         }
     } else {
         Log(L"설치된 ReShade 를 찾았습니다: " + rs);
@@ -2142,11 +3026,13 @@ static DWORD WINAPI WorkThread(LPVOID param) {
                 Log(left);
                 std::wstring NLr(1, (wchar_t)10);
                 std::wstring mr;
-                mr += L"되돌리기를 했지만 아직 남아 있는 것이 있습니다." + NLr + NLr;
+                // 2026-10-18. 지울 수 있는 것은 이미 다 지웠다. 여기까지 온 것은
+                // 파일이 잠긴 경우뿐이다. 손으로 지우라고 시키지 않는다.
+                mr += L"이 파일이 잠겨 있어서 지우지 못했습니다." + NLr + NLr;
                 mr += left + NLr;
-                mr += L"게임이나 다른 프로그램이 그 파일을 잡고 있을 수 있습니다." + NLr;
-                mr += L"게임을 완전히 끄신 뒤 [되돌리기] 를 한 번 더 눌러 주세요." + NLr + NLr;
-                mr += L"그래도 남으면 위 파일들을 직접 지우셔도 됩니다.";
+                mr += L"게임이나 스팀이 아직 켜져 있는 것 같습니다." + NLr;
+                mr += L"완전히 끄신 뒤 [되돌리기] 를 한 번 더 눌러 주세요." + NLr + NLr;
+                mr += L"그러면 프로그램이 알아서 치웁니다.";
                 MessageBoxW(g_hWnd, mr.c_str(), L"되돌리기를 확인해 주세요",
                             MB_OK | MB_ICONWARNING | MB_TOPMOST);
             }
@@ -2175,6 +3061,8 @@ static DWORD WINAPI WorkThread(LPVOID param) {
             std::wstring m;
             m += L"이 게임의 실행 파일을 찾지 못했습니다." + NLs + NLs;
             m += L"잘못 설치되지 않도록 아무것도 넣지 않았습니다." + NLs + NLs;
+            m += L"2010년 무렵 이전 게임이라면 DirectX 9 라서" + NLs;
+            m += L"DLSS 5 자체가 안 되는 게임일 수 있습니다." + NLs + NLs;
             m += L"[진행 기록 복사]를 눌러 게시물 댓글에 붙여넣어 주세요.";
             MessageBoxW(g_hWnd, m.c_str(), L"설치하지 않았습니다", MB_OK | MB_ICONWARNING | MB_TOPMOST);
             Status(L"설치하지 않았습니다");
@@ -2415,10 +3303,38 @@ static DWORD WINAPI WorkThread(LPVOID param) {
     Log(L"DLSS 5를 켜는 설정만 넣고 있습니다. 화질 값은 제작자 기본값 그대로 둡니다.");
     ApplyPreset(gameDir + L"\\OptiScaler.ini");
 
+    SetupStreamlineForFg(gameDir, added);
+
     // 리세이드가 먼저 깔려 있으면 리세이드가 DXGI 팩토리를 감싸 버려서
     // OptiScaler 의 훅이 실패한다(로그에 Failed to hook IDXGIFactory / DLSS: 10DD,
     // 그 뒤로 초당 미니덤프). 이때는 훅 대신 감싸기로 들어가야 한다.
     // 2026-09-16 위처3(DX12 + 리세이드 6.7.3 dxgi.dll)에서 확인.
+    if (ReShadeManagerHasGame(gameDir)) {
+        Log(L"리세이드 매니저가 이 게임을 이미 들고 있습니다. 우리 리세이드는 넣지 않습니다.");
+        Log(L"  (두 벌이 올라오면 나중 것이 스스로 꺼져서 창이 안 열립니다)");
+        RemoveOurReShade(gameDir);
+        // dll 은 매니저 것을 쓰더라도 효과 파일은 있어야 쓸 수 있다. 없으면 넣어준다.
+        {
+            std::wstring shDst = gameDir + L"\\" + RS_SHADERS;
+            std::wstring shSrc = SelfDir() + L"\\" + DATA_DIR + L"\\" + RS_DIR + L"\\" + RS_SHADERS;
+            if (!HasFxFiles(shDst, 3) && DirExists(shSrc)) {
+                std::vector<std::wstring> got;
+                CopyTree(shSrc, shDst, got);
+                for (size_t i = 0; i < got.size(); i++)
+                    added.push_back(std::wstring(RS_SHADERS) + L"\\" + got[i]);
+                wchar_t b[160];
+                swprintf_s(b, L"  효과 파일은 넣어 드립니다. (파일 %d개)", (int)got.size());
+                Log(b);
+            }
+        }
+    } else if (SendMessageW(g_hRs, BM_GETCHECK, 0, 0) == BST_CHECKED) {
+        Log(L"리세이드도 같이 넣습니다. (나중에 직접 넣으려 하면 이름이 겹쳐 막힙니다)");
+        InstallReShadeBeside(gameDir, proxy, added);
+    } else {
+        Log(L"리세이드는 넣지 않습니다. (창에서 끄셨습니다)");
+        RemoveOurReShade(gameDir);
+    }
+
     if (HasReShade(gameDir)) {
         Log(L"  리세이드가 깔려 있습니다. 충돌을 피하려고 DxgiFactoryWrapping 을 켭니다.");
         SetIniKey(gameDir + L"\\OptiScaler.ini", "Spoofing", "DxgiFactoryWrapping", "true");
@@ -2537,7 +3453,7 @@ static DWORD WINAPI WorkThread(LPVOID param) {
         Log(L"     이 게임은 설정에 DLSS 항목이 없습니다. 그래서 바꾸실 것이 없습니다.");
         Log(L"     프로그램이 넣어 둔 것들이 알아서 DLSS 5를 만들어 겁니다.");
         Log(L"  2. 세이브를 불러와 실제 게임 화면으로 들어가세요. 메뉴 화면에서는 적용되지 않습니다.");
-        Log(L"  3. Insert 키로 리세이드 창을 열고 위쪽 RenoDX-DLSSNR 칸을 누르세요.");
+        Log(L"  3. 숫자 8 키로 리세이드 창을 열고 위쪽 RenoDX-DLSSNR 칸을 누르세요.");
         Log(L"     ACTIVE - NR INJECTED 라고 적혀 있으면 켜진 것입니다.");
         Log(L"  4. F7 키로 껐다 켜며 비교해 보세요. 얼굴 클로즈업에서 차이가 가장 잘 보입니다.");
     } else {
@@ -2548,7 +3464,19 @@ static DWORD WINAPI WorkThread(LPVOID param) {
         Log(L"  4. Insert 키로 조절 창을 열고 맨 아래 DLSS Neural Rendering 항목을 펼치세요.");
         Log(L"  5. F7 키로 껐다 켜며 비교해 보세요. 얼굴 클로즈업에서 차이가 가장 잘 보입니다.");
         Log(L"");
+        Log(L"※ 리세이드도 같이 넣었습니다. 숫자 8 키로 열립니다. (DLSS 5 창은 Insert 입니다)");
+        Log(L"   8 을 눌러도 창이 안 뜨면 [DLSS 5 설치]를 한 번 더 누르세요.");
+        Log(L"   게임마다 읽어 들이는 파일 이름이 달라서, 다른 이름으로 바꿔 넣습니다.");
         Log(L"※ 프레임이 모자라면 Insert 창에서 Model resolution 을 0.7 로 내리세요.");
+        // 스트림라인 폴더를 넣었다는 건 이 게임이 DLSS 프레임 생성을 할 줄 안다는 뜻이다.
+        // 게임 설정에서 켜야 호출이 생기고, 그래야 옵티가 가로챌 것이 있다.
+        if (DirExists(gameDir + L"\\OptiScaler\\streamline")) {
+            Log(L"※ 이 게임은 DLSS 프레임 생성을 할 줄 압니다. 쓰시려면 이렇게 하세요.");
+            Log(L"   1. 게임 설정에서 DLSS 프레임 생성을 켭니다.");
+            Log(L"   2. 그것만으로 프레임이 오르면 거기서 끝입니다. 창은 건드리지 마세요.");
+            Log(L"   3. 안 오를 때만 Insert 창의 Frame Generation 을 DLSSG 로 바꾸세요.");
+            Log(L"   수직동기화를 켜 두면 주사율에서 막혀 숫자가 안 오릅니다.");
+        }
     }
     Log(L"※ 피부가 하얗게 뜨거나 반짝이면 Detail 과 Colour 를 내리세요.");
     Log(L"※ 설치 직후 첫 실행은 실패할 수 있습니다. 그냥 한 번 더 켜시면 됩니다.");
@@ -2721,6 +3649,41 @@ static void StartJob(bool restore) {
         AddLogLine(L"확인하지 못한 카드인데 사용자가 계속하기를 골랐습니다.");
     }
 
+    // DLSS 1.0 에서 멈춘 게임들. nvngx_dlss.dll 은 있지만 요즘 DLSS 가 쓰는
+    // 연결 통로가 없어서, 옵티스케일러가 가로챌 것이 없다. 설치는 되고 효과만 없다.
+    if (!restore) {
+        std::wstring gl = LowerW(g_games[sel].name);
+        bool dlss1 = false;
+        if (gl.find(L"final fantasy xv") != std::wstring::npos) dlss1 = true;
+        if (gl.find(L"monster hunter") != std::wstring::npos &&
+            gl.find(L"world") != std::wstring::npos) dlss1 = true;
+        if (gl.find(L"battlefield") != std::wstring::npos) {
+            // "Battlefield V" 와 "Battlefield(TM) V" 만 잡는다. 1 이나 2042 는 아니다.
+            size_t n = gl.find_last_not_of(L" ");
+            if (n != std::wstring::npos && gl[n] == L'v') dlss1 = true;
+        }
+        if (dlss1) {
+            AddLogLine(L"  → DLSS 1.0 에서 멈춘 게임입니다. 신경망을 걸 통로가 없습니다.");
+            int a = MessageBoxW(g_hWnd,
+            (L"이 게임의 DLSS 는 DLSS 1.0 입니다.\n\n"
+            L"  고른 게임: " + g_games[sel].name + L"\n\n"
+            L"DLSS 1.0 은 지금의 DLSS 2 / 3 / 4 와 이름만 같고 구조가 다릅니다. "
+            L"게임마다 따로 학습시켜 넣던 방식이라, 요즘 DLSS 가 쓰는 연결 통로가 "
+            L"아예 없습니다.\n\n"
+            L"이 프로그램은 그 통로를 가로채서 신경망을 거는 방식입니다. 가로챌 것이 "
+            L"없으면 설치는 끝까지 잘 되지만 게임 안에서는 아무 일도 일어나지 "
+            L"않습니다. 설정을 바꿔도 달라지지 않습니다.\n\n"
+            L"그래도 설치할까요? [되돌리기]를 누르면 언제든 원래대로 돌아갑니다.").c_str(),
+            L"DLSS 1.0 게임입니다", MB_OKCANCEL | MB_ICONWARNING | MB_TOPMOST);
+            if (a != IDOK) {
+                AddLogLine(L"사용자가 설치를 취소했습니다 (DLSS 1.0 게임).");
+                EnableWindow(g_hInstall, TRUE); EnableWindow(g_hRestore, TRUE); EnableWindow(g_hPick, TRUE);
+                g_busy = 0; return;
+            }
+            AddLogLine(L"DLSS 1.0 게임인데 사용자가 계속하기를 골랐습니다.");
+        }
+    }
+
     std::wstring online = FindOnlineGame(g_games[sel].dir);
     if (!online.empty() && !restore) {
         MessageBoxW(g_hWnd,
@@ -2778,6 +3741,7 @@ static void LayoutControls(int w, int h) {
 
     int y = top;
     MoveWindow(g_hList, M, y, cw, listH, TRUE);           y += listH + ROW_GAP;
+    MoveWindow(g_hRs, M, y, cw, 24, TRUE);                y += 24 + ROW_GAP;
 
 
     int bw = 170, bh = BTN_H, gap = 10;
@@ -2892,6 +3856,17 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
         WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 500, 356, 180, 38, g_hWnd, NULL, hInst, NULL);
     g_hRestore = CreateWindowW(L"BUTTON", L"되돌리기",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 690, 356, 150, 38, g_hWnd, NULL, hInst, NULL);
+    // 2026-10-18. 리세이드를 넣을지 고를 수 있게 했다. 기본은 켜짐이다.
+    // 리세이드 설치가 이 도구의 절반이라 끄는 것을 기본으로 두면 안 된다.
+    // 리세이드가 d3d12.dll 자리에 들어가면 그쪽이 DXGI 팩토리를 만들어서,
+    // DLSS 5 가 winmm.dll 자리일 때 Insert 창이 안 열리는 게임이 있다.
+    // 효과 파일 886개를 읽느라 게임 설정 화면이 10초쯤 멈춘다는 제보도 있었다.
+    // 필요한 분만 켜면 그 문제가 처음부터 안 생긴다.
+    g_hRs = CreateWindowW(L"BUTTON", L"리세이드도 같이 설치 (끄면 DLSS 5 만 넣습니다)",
+        WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 20, 330, 500, 24, g_hWnd, NULL, hInst, NULL);
+    SendMessageW(g_hRs, BM_SETCHECK, BST_CHECKED, 0);
+    SendMessageW(g_hRs, WM_SETFONT, (WPARAM)g_font, TRUE);
+
     SendMessageW(g_hCopy,    WM_SETFONT, (WPARAM)g_font, TRUE);
     SendMessageW(g_hPick,    WM_SETFONT, (WPARAM)g_font, TRUE);
     SendMessageW(g_hInstall, WM_SETFONT, (WPARAM)g_font, TRUE);
@@ -2970,6 +3945,20 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
         if (!gpu.nvVersion.empty()) gline += L"      드라이버 " + gpu.nvVersion;
         SetWindowTextW(g_hGpu, gline.c_str());
         AddLogLine(gline.c_str());
+        // 2026-10-18. 신경망 파일이 요구하는 드라이버를 확인한다.
+        //   nvngx_dlssnr.dll 안에 NGXMinimumDriverVersion 615.00 이라고 적혀 있다.
+        //   610.88 에서 프래그마타가 켜자마자 꺼졌다.
+        // 게임마다 다르게 나타나므로 막지는 않고 알려만 준다.
+        if (!gpu.nvVersion.empty()) {
+            double v = _wtof(gpu.nvVersion.c_str());
+            if (v > 0 && v < 615.0) {
+                AddLogLine(L"[주의] 드라이버가 615.00 보다 낮습니다.");
+                AddLogLine(L"  DLSS 5 신경망 파일은 615.00 이상을 요구합니다.");
+                AddLogLine(L"  낮은 드라이버에서는 게임에 따라 켜자마자 꺼질 수 있습니다.");
+                AddLogLine(L"  엔비디아 앱에서 드라이버를 올리신 뒤 쓰시는 것이 좋습니다.");
+            }
+        }
+
         if (gpu.tier == 2)
             AddLogLine(L"RTX 50 시리즈입니다.");
         else if (gpu.tier == 1 && gpu.series == 4)
