@@ -18,10 +18,10 @@
 
 // ================================================================ 설정
 // 버전 규칙: 아래 OPTI_URL(내려받기 주소)을 바꿀 때마다 맨 뒷자리를 1 올린다.
-static const wchar_t* APP_VER  = L"1.0.2.1";
-static const wchar_t* OPTI_VER = L"v0.2.0-patch1";
+static const wchar_t* APP_VER  = L"1.0.3.0";
+static const wchar_t* OPTI_VER = L"F5-DLSSNR v0.1.33";
 static const wchar_t* OPTI_URL =
-    L"https://github.com/Dagherbou/OptiScaler_DLSSNR/releases/download/v0.2.0-patch1/OptiScaler-DLSSNR-v0.2.0-onimusha-fix.zip";
+    L"https://github.com/janblade/OptiScaler-F5-DLSSNR-Multipass/releases/download/v0.1.33/OptiScaler-DLSSNR-F5-0.1.33-with-dlss-fg.zip";
 static const wchar_t* SWAPPER_URL = L"https://github.com/rakanki911/DLSS5-Swapper";
 static const wchar_t* NEXUS_URL   = L"https://www.nexusmods.com/site/mods/2224?tab=files";
 static const wchar_t* BACKUP_DIR  = L"_DLSS5_backup";
@@ -52,36 +52,70 @@ static const IniSet PRESET[] = {
     { L"Upscalers", L"Dx11Upscaler",   L"dlss_12" },
     { L"Upscalers", L"Dx12Upscaler",   L"dlss"    },
     { L"Upscalers", L"VulkanUpscaler", L"dlss"    },
+    // 2026-10-22. 포크가 켤 때마다 깃허브를 보고 "새 판 있음" 줄을 띄운다.
+    // 받아 가신 분이 그 링크로 직접 올리면 우리가 시험하지 않은 판이 들어가고,
+    // ini 항목 이름이 바뀌면 우리 기본값이 통째로 안 먹는다.
+    // 새 판은 우리가 시험해서 올려 드리는 쪽으로 한다.
+    { L"Hotfix",    L"CheckForUpdate",  L"false"   },
     { L"DlssNr",    L"Enabled",        L"true"    },
     { L"DlssNr",    L"ToggleKey",      L"0x76"    },
-    // 2026-10-18. 모델이 화면의 몇 분의 일로 돌지. 기본값은 1.0 이다.
-    // 비용은 이 값의 제곱으로 늘어난다. 1.0 이면 0.5 의 네 배다.
-    // 30% 와 100% 를 같은 자리에서 재봤더니 결과가 같았다.
-    // 기본값 그대로 두면 프레임만 먹고 화질은 그대로다.
-    { L"DlssNr",    L"WorkingScale",   L"0.5"     },
-    // 2026-10-18. 신경망이 얼마나 세게 그릴지. 기본값은 1.0 이다.
-    // 이 값은 올려도 프레임을 먹지 않는다. 눈에 보이는 쪽을 올린다.
-    { L"DlssNr",    L"Intensity",      L"1.5"     },
-    // 2026-10-18. 모델이 만든 색을 얼마나 가져올지. 기본값은 1.0 이다.
+
+    // 2026-10-22. 기본값을 "Natural 1패스" 로 바꿨다.
     //
-    // 1.0 으로 두면 어두운 장면에서 화면 전체가 지글거린다.
-    // 어두운 장면은 색 정보가 거의 없는데 모델은 색을 만들어 낸다.
-    // 그 지어낸 색이 하늘처럼 평탄한 면에 알갱이로 뿌려진다.
-    // 0 이면 게임의 색을 그대로 쓰고 모델은 밝기만 보탠다. 색 알갱이가 안 생긴다.
+    // 1.0.2.1 까지는 값을 하나씩 손으로 맞춰 넣었다. 그런데 사람이 창에서
+    // 프리셋 단추를 한 번 누르면 그 값들이 전부 덮어써진다. 손으로 맞춘 값은
+    // 클릭 한 번에 사라진다. 그래서 프리셋 한 벌을 통째로 넣는다.
+    // 안내도 "창에서 프리셋만 바꿔 보세요" 한 줄로 끝난다.
     //
-    // 킹덤컴2 밤 성벽에서 하나씩 끄며 찾은 값이다 (2026-10-02).
-    //   리세이드 F9 로 끔          차이 없음
-    //   LocalStructure 1.0 -> 0    여전히 지글
-    //   WhitePointScale 바꿈       차이 없음
-    //   ColourStrength 1.0 -> 0    깨끗해졌다
+    // 아래는 창의 [Natural] 단추가 실제로 ini 에 쓰는 값이다. 추측이 아니라
+    // 레데리2에서 눌러 저장한 뒤 ini 를 읽어 그대로 옮긴 것이다.
     //
-    // 디테일은 안 잃는다. 피부결·수염·천의 짜임은 전부 명암이지 색이 아니다.
-    // 레데리2 실측: 이 값이 1.0 일 때 선명도는 +2% 올리면서 채도를 +9% 올리고 있었다.
-    // 얻는 것보다 바꿔버리는 쪽이 크다. 그래서 낮과 밤을 나눌 필요가 없다.
+    // 생드니 실측 (4K, RTX 5070 Ti, Vulkan, 리세이드 끈 상태)
+    //   바닐라 60fps -> 57fps.
+    //   자갈이 하나씩 떨어지고 철제 난간 살이 갈라진다. 관공서 석재에 결이 선다.
+    //   간판 글자는 안 깨진다 (프리셋 다섯 개 전부 확인했다).
+    //   2패스는 40fps 라 기본으로 두지 않는다. 창에서 올릴 수 있다.
+    { L"DlssNr",    L"RunBeforeSR",    L"true" },
+    { L"DlssNr",    L"Passes",         L"1"    },
+    { L"DlssNr",    L"Style",          L"1"    },   // 0 standard, 1 natural, 2 cinematic
+    { L"DlssNr",    L"ReversibleMode", L"5"    },
+    { L"DlssNr",    L"Transfer",       L"2"    },
+    { L"DlssNr",    L"Intensity",      L"1.4"  },
+    { L"DlssNr",    L"LocalStructure", L"1.4"  },
+    { L"DlssNr",    L"LocalTone",      L"1.4"  },
+
+    // WorkingScale 은 반드시 써 넣는다. 1.0.2.1 이 0.5 를 박아 놓았기 때문이다.
+    // 안 쓰면 전에 깐 분들 ini 에 0.5 가 그대로 남는다.
+    // 0.5 는 모델을 화면의 반에서 돌리고 그 결과를 늘린다. 풍경 잔결이 거기서 사라진다.
+    // 2026-10-21 레데리2 실측: 풀밭 -6.2%, 화면 전체 -4.1%. 손해만 보던 값이다.
+    { L"DlssNr",    L"WorkingScale",   L"1.0"  },
+
+    // ColourStrength 도 반드시 써 넣는다. 1.0.2.1 이 0.0 을 박아 놓았다.
+    // Natural 은 이 값을 기본(1.0)으로 쓴다. 안 쓰면 새로 까는 분은 1.0,
+    // 전에 깐 분은 0.0 이 되어 같은 설치 도구인데 화면이 달라진다.
     //
-    // 지글거림이 나온 게임은 킹덤컴2와 스파이더맨 2 둘이다. 다른 게임은 안 나온다.
-    // 멀쩡한 게임의 화면도 같이 바뀌는 값이라는 점은 알고 넣는 것이다.
-    { L"DlssNr",    L"ColourStrength", L"0.0"     },
+    // 주의 - 0.0 은 원래 지글거림을 잡으려고 넣었던 값이다 (2026-10-02).
+    // 킹덤컴2 밤 성벽과 스파이더맨 2 에서 하늘처럼 평탄한 면에 색 알갱이가
+    // 뿌려졌고, 이 값을 0 으로 내려서 잡았다. 1.0 으로 돌리면 돌아올 수 있다.
+    // 킹덤컴2 는 전수조사 대상이다. 밤 성벽을 반드시 볼 것.
+    // 돌아오면 이 줄만 0.0 으로 내린다. 색만 빠지고 결은 그대로다.
+    { L"DlssNr",    L"ColourStrength", L"1.0"  },
+
+    // 2패스, 3패스로 올렸을 때 쓸 값. 1패스에서는 쓰이지 않는다.
+    // 안 쓰면 2패스가 Natural 이 의도한 모습이 아니라 1패스를 그대로 물려받은
+    // 모습이 된다 (local tone 만 0). 사용자가 올려 볼 수 있어야 하므로 같이 넣는다.
+    { L"DlssNr",    L"Pass2Style",          L"1"    },
+    { L"DlssNr",    L"Pass2Intensity",      L"1.0"  },
+    { L"DlssNr",    L"Pass2LocalStructure", L"1.0"  },
+    { L"DlssNr",    L"Pass2LocalTone",      L"1.0"  },
+    { L"DlssNr",    L"Pass2SkinStructure",  L"-1.0" },
+    { L"DlssNr",    L"Pass2AutoMask",       L"true" },
+    { L"DlssNr",    L"Pass3Style",          L"1"    },
+    { L"DlssNr",    L"Pass3Intensity",      L"0.75" },
+    { L"DlssNr",    L"Pass3LocalStructure", L"1.5"  },
+    { L"DlssNr",    L"Pass3LocalTone",      L"0.46" },
+    { L"DlssNr",    L"Pass3SkinStructure",  L"1.0"  },
+    { L"DlssNr",    L"Pass3AutoMask",       L"true" },
 };
 
 // 게임이 읽어 들일 수 있는 이름들 (앞에서부터 시도)
@@ -324,6 +358,86 @@ static void SweepOursDeep(const std::wstring& dir, int depth, int* swept, bool i
     FindClose(h);
 }
 
+// 빈 폴더만 재귀로 치운다. 파일이 하나라도 있으면 그 폴더는 남는다.
+// 되돌린 뒤 reshade-shaders 밑에 빈 폴더가 백 개 넘게 남는 것을 보고 넣었다
+// (2026-10-22 레데리2). RemoveDirectoryW 는 비어 있을 때만 성공한다.
+static int PruneEmptyDirs(const std::wstring& dir) {
+    int gone = 0;
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW((dir + L"\\*").c_str(), &fd);
+    if (h != INVALID_HANDLE_VALUE) {
+        do {
+            std::wstring n = fd.cFileName;
+            if (n == L"." || n == L"..") {
+                continue;
+            }
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                gone += PruneEmptyDirs(dir + L"\\" + n);
+            }
+        } while (FindNextFileW(h, &fd));
+        FindClose(h);
+    }
+    if (RemoveDirectoryW(dir.c_str())) {
+        gone++;
+    }
+    return gone;
+}
+
+// 우리가 만든 ReShadePreset.ini 인가.
+// 켠 효과가 우리 둘(DH_UBER_MOTION_020, DLSS5_Feed) 뿐이고 다른 값이 없으면 우리 것이다.
+// 사용자가 쓰시던 프리셋에는 효과가 더 들어 있거나 값이 적혀 있다. 그런 건 건드리지 않는다.
+// 2026-10-22 라오어 1에서 예전 판이 남긴 것을 발견해 넣었다.
+// DLSS 있는 게임에서는 저 두 효과가 하는 일 없이 프레임만 먹는다.
+static bool IsOurReShadePreset(const std::wstring& path) {
+    std::string t = ReadFileBytes(path);
+    if (t.empty() || t.size() > 2048) {
+        return false;
+    }
+    size_t p = 0;
+    while (p < t.size()) {
+        size_t e = t.find('\n', p);
+        std::string ln = t.substr(p, (e == std::string::npos ? t.size() : e) - p);
+        p = (e == std::string::npos) ? t.size() : e + 1;
+        while (!ln.empty() && (ln.back() == '\r' || ln.back() == ' ')) {
+            ln.pop_back();
+        }
+        if (ln.empty() || ln[0] == '[' || ln[0] == ';') {
+            continue;
+        }
+        size_t eq = ln.find('=');
+        if (eq == std::string::npos) {
+            return false;
+        }
+        std::string key = ln.substr(0, eq);
+        std::string val = ln.substr(eq + 1);
+        if (key != "Techniques" && key != "TechniqueSorting") {
+            if (!val.empty()) {
+                return false;   // 사용자가 값을 넣어 둔 항목이 있다
+            }
+            continue;
+        }
+        // 켠 효과가 우리 둘 말고 또 있으면 사용자 것이다
+        std::string rest = val;
+        const char* ours[] = { "DH_UBER_MOTION_020@dh_uber_motion.fx",
+                               "DLSS5_Feed@DLSS5_Feed.fx" };
+        for (int k = 0; k < 2; k++) {
+            for (;;) {
+                size_t f = rest.find(ours[k]);
+                if (f == std::string::npos) {
+                    break;
+                }
+                rest.erase(f, strlen(ours[k]));
+            }
+        }
+        for (size_t k = 0; k < rest.size(); k++) {
+            if (rest[k] != ',' && rest[k] != ' ') {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 static int CheckRevertLeftovers(const std::wstring& gameDir, std::wstring& reportOut) {
     std::wstring NL(1, (wchar_t)10);
     std::wstring bad;
@@ -341,6 +455,10 @@ static int CheckRevertLeftovers(const std::wstring& gameDir, std::wstring& repor
         L"READ ME - DLSS Neural Rendering.txt",
         L"!! EXTRACT ALL FILES TO GAME FOLDER !!",
         L"_DLSS5_installed.txt",
+        // 2026-10-22. janblade 포크 zip 이 게임 폴더에 같이 푸는 파일들이다.
+        // 흔한 이름(README.md, LICENSE)은 게임 것일 수 있어 넣지 않는다.
+        L"SHA256SUMS.txt", L"INSTALL-DLSSNR.md", L"TROUBLESHOOTING.md",
+        L"get_streamline.ps1",
     };
     for (size_t i = 0; i < _countof(files); i++) {
         std::wstring p = gameDir + L"\\" + files[i];
@@ -351,14 +469,37 @@ static int CheckRevertLeftovers(const std::wstring& gameDir, std::wstring& repor
     }
 
     // 폴더. _DLSS5_backup 은 사용자의 원래 파일 자리라 손대지 않는다.
-    const wchar_t* dirs[] = { L"OptiScaler", L"Licenses", L"host64" };
-    for (int i = 0; i < 3; i++) {
+    // 2026-10-22. docs 와 redist 는 janblade 포크가 새로 넣는 폴더다.
+    // 매니페스트로 파일은 지워지지만 빈 폴더가 남는다.
+    const wchar_t* dirs[] = { L"OptiScaler", L"Licenses", L"host64", L"docs", L"redist" };
+    for (int i = 0; i < 5; i++) {
         std::wstring p = gameDir + L"\\" + dirs[i];
         if (!DirExists(p)) continue;
         RemoveTree(p);
         if (DirExists(p)) { bad += std::wstring(L"  - ") + dirs[i] + L" 폴더" + NL; miss++; }
         else swept++;
     }
+    // 2026-10-22. reshade-shaders 는 매니페스트로 파일만 지워져 빈 폴더가 남는다.
+    // RemoveDirectoryW 는 비어 있을 때만 성공하므로, 사용자가 넣어 둔 셰이더가
+    // 있으면 저절로 실패하고 그대로 남는다. 안쪽 폴더부터 지운다.
+    {
+        std::wstring sh = gameDir + L"\\reshade-shaders";
+        if (DirExists(sh)) {
+            swept += PruneEmptyDirs(sh);
+        }
+    }
+
+    // 우리가 만든 프리셋이면 치운다. 사용자 것이면 그대로 둔다.
+    {
+        std::wstring pr = gameDir + L"\\ReShadePreset.ini";
+        if (FileExists(pr) && IsOurReShadePreset(pr)) {
+            DeleteFileW(pr.c_str());
+            if (!FileExists(pr)) {
+                swept++;
+            }
+        }
+    }
+
     if (DirExists(gameDir + L"\\_DLSS5_backup"))
         { bad += L"  - _DLSS5_backup 폴더" + NL; miss++; }
 
@@ -405,11 +546,11 @@ static long long FileSizeOf(const std::wstring& p);
 static std::wstring Crc32File(const std::wstring& p);
 struct NeedFile { const wchar_t* rel; long long size; const wchar_t* what; const wchar_t* crc; };
 static const NeedFile NEEDED[] = {
-    { L"data\\optiscaler.dat",                  130480693, L"OptiScaler 본체",      NULL },
+    { L"data\\optiscaler.dat",                  143731279, L"OptiScaler 본체",      NULL },
     { L"data\\nvngx_dlssnr.dll",                165840496, L"신경망 모델",          L"9C56B352" },
     { L"data\\feeder\\nvngx_dlss.dll",          58956400, L"DLSS 런타임",          NULL },
     { L"data\\feeder\\dlss5-feed.addon64",        297472, L"DLSS5-Feeder",         NULL },
-    { L"data\\feeder\\renodx-dlss5.addon64",     1732608, L"RenoDX 애드온",        NULL },
+    { L"data\\feeder\\renodx-dlss5.addon64",     3186176, L"RenoDX 애드온",        NULL },
     { L"data\\feeder\\host64\\dlss5-feed-host64.exe", 146944, L"Feeder 보조 실행 파일", NULL },
     { L"data\\feeder\\shaders\\DLSS5_Feed.fx",          51193, L"Feeder 셰이더",    NULL },
     { L"data\\feeder\\dlss5-feed.cfg",               329, L"Feeder 설정",          NULL },
@@ -759,6 +900,19 @@ static std::wstring FindOnlineGame(const std::wstring& dir) {
         { L"fortniteclient",     L"포트나이트" },
         { L"destiny2.exe",       L"데스티니 2" },
         { L"rainbowsix",         L"레인보우 식스" },
+        // 콜 오브 듀티. Ricochet 은 커널에서 돌면서 게임에 끼어드는 프로그램을
+        // 감시하고 신고한다. 2026-10-21 제보: 설치 후 cod.exe 가
+        // 0x00001337 (ntdll.dll) 로 튀었다. 그 숫자는 윈도 오류가 아니라
+        // 게임이 제 손으로 뱉은 것이다. 폴더 이름이 스토어마다 달라 여러 갈래를 본다.
+        { L"call of duty",       L"콜 오브 듀티" },
+        { L"callofduty",         L"콜 오브 듀티" },
+        { L"cod.exe",            L"콜 오브 듀티" },
+        { L"modernwarfare",      L"콜 오브 듀티" },
+        { L"modern warfare",     L"콜 오브 듀티" },
+        { L"black ops",          L"콜 오브 듀티" },
+        { L"blackops",           L"콜 오브 듀티" },
+        { L"warzone",            L"콜 오브 듀티 워존" },
+        { L"ricochet",           L"콜 오브 듀티" },
         // 혼자 하는 것처럼 보여도 항상 서버에 붙어 있는 게임들.
         // 이야기를 따라가는 게임이라도 커널에서 도는 안티치트가 들어 있고,
         // 계정에 유료 재화가 묶여 있어 정지되면 손해가 크다.
@@ -1688,10 +1842,62 @@ static void ApplyPreset(const std::wstring& iniPath) {
             }
         }
     }
+    // 2026-10-22. ini 틀에 그 줄이 없는 항목은 위에서 고쳐지지 않는다.
+    // 전에는 그런 항목이 조용히 버려졌다. 로그에도 안 남아서 모르고 지나간다.
+    // 실제로 janblade 포크의 틀에는 Transfer 줄이 없어서
+    // Natural 의 일부인 Transfer = 2 가 안 써졌다.
+    // 없는 항목은 그 단락 끝에 붙인다. 단락자체가 없으면 맨 뒤에 만든다.
+    int addedCnt = 0;
+    for (size_t k = 0; k < sizeof(PRESET) / sizeof(PRESET[0]); k++) {
+        std::string wantSec = W2U(PRESET[k].section);
+        std::string wantKey = W2U(PRESET[k].key);
+        bool have = false;
+        std::string sec2;
+        size_t secEnd = (size_t)-1;   // 그 단락의 마지막 줄 다음 자리
+        for (size_t i = 0; i < lines.size() && !have; i++) {
+            std::string t = lines[i];
+            size_t a = t.find_first_not_of(" \t");
+            if (a == std::string::npos) continue;
+            if (t[a] == '[') {
+                size_t b2 = t.find(']', a);
+                if (b2 != std::string::npos) {
+                    if (sec2 == wantSec && secEnd == (size_t)-1) secEnd = i;
+                    sec2 = t.substr(a + 1, b2 - a - 1);
+                }
+                continue;
+            }
+            if (t[a] == ';' || t[a] == '#') continue;
+            size_t eq = t.find('=', a);
+            if (eq == std::string::npos) continue;
+            std::string key = t.substr(a, eq - a);
+            while (!key.empty() && (key.back() == ' ' || key.back() == '\t')) key.pop_back();
+            if (sec2 == wantSec && key == wantKey) have = true;
+        }
+        if (have) continue;
+        std::string line = wantKey + " = " + W2U(PRESET[k].value) + "\r\n";
+        if (secEnd != (size_t)-1) {
+            lines.insert(lines.begin() + secEnd, line);
+        } else {
+            bool secFound = false;
+            for (size_t i = 0; i < lines.size(); i++) {
+                std::string t = lines[i];
+                size_t a = t.find_first_not_of(" \t");
+                if (a == std::string::npos || t[a] != '[') continue;
+                size_t b2 = t.find(']', a);
+                if (b2 != std::string::npos && t.substr(a + 1, b2 - a - 1) == wantSec) { secFound = true; break; }
+            }
+            if (!secFound) lines.push_back("[" + wantSec + "]\r\n");
+            lines.push_back(line);
+        }
+        addedCnt++;
+        Log(L"  없던 항목을 붙였습니다: " + std::wstring(PRESET[k].key));
+    }
+
     std::string out;
     for (size_t i = 0; i < lines.size(); i++) out += lines[i];
     WriteFileBytes(iniPath, out);
-    wchar_t b[128]; swprintf_s(b, L"  설정 %d개를 적용했습니다.", changed);
+    wchar_t b[160];
+    swprintf_s(b, L"  설정 %d개를 적용했습니다. (새로 붙인 것 %d개)", changed, addedCnt);
     Log(b);
 }
 
@@ -2208,13 +2414,17 @@ static int SelfCheck(const std::wstring& gameDir, bool modeB, std::wstring& repo
     reportOut = bad;
     return miss;
 }
-// 깃허브에서 최신 릴리스의 zip 주소를 받아온다.
-// 주소에 버전을 박아 두면 새 판이 나왔을 때 죽는다. 실패하면 박아 둔 주소로 돌아간다.
+// 깃허브에서 우리가 동봉한 것과 같은 파일의 주소를 받아온다.
+// 주소에 버전을 박아 두면 릴리스가 지워졌을 때 죽는다. 실패하면 박아 둔 주소로 돌아간다.
+//
+// 2026-10-22. 예전에는 "최신 릴리스"를 받아왔다. 이제 그런게 하지 않는다.
+// 포크는 일주일에도 몇 판씩 나오고, 판본이 바니면 ini 항목 이름이 바뀔 수 있다.
+// 그러면 우리가 넣는 기본값이 안 먹는다. 전수조사를 마친 판본만 쓴다.
 static std::wstring FetchLatestOptiUrl() {
     std::wstring tmp = TempDir() + L"release.json";
     DeleteFileW(tmp.c_str());
     const wchar_t* api =
-        L"https://api.github.com/repos/Dagherbou/OptiScaler_DLSSNR/releases/latest";
+        L"https://api.github.com/repos/janblade/OptiScaler-F5-DLSSNR-Multipass/releases";
     if (FAILED(URLDownloadToFileW(NULL, api, tmp.c_str(), 0, NULL))) return L"";
     std::string j = ReadFileBytes(tmp);
     DeleteFileW(tmp.c_str());
@@ -2232,7 +2442,8 @@ static std::wstring FetchLatestOptiUrl() {
         if (q2 == std::string::npos) break;
         std::string u = j.substr(q1 + 1, q2 - q1 - 1);
         p = q2;
-        if (u.size() > 4 && u.compare(u.size() - 4, 4, ".zip") == 0)
+        // 동봉한 것과 같은 파일 이름일 때만 쓴다.
+        if (u.find("OptiScaler-DLSSNR-F5-0.1.33-with-dlss-fg.zip") != std::string::npos)
             return U2W(u);
     }
     return L"";
@@ -2821,14 +3032,45 @@ static bool InstallFeeder(const std::wstring& gameDir, std::vector<std::wstring>
             Log(L"  껐다 켜는 키는 이미 정해져 있어 그대로 둡니다.");
         }
 
-        // NRStyle 이 2 로 되어 있으면 다음 실행 때 게임이 안 켜진다.
-        // 제작자 문서에 적힌 알려진 문제다. 0 으로 박아 둔다.
+        // 2026-10-22. 리세이드 길도 옵티 길과 같은 기본값으로 맞춘다.
+        //
+        // 1.0.2.1 까지는 켜고 끄는 키만 맞추고 화질 값은 애드온 순정으로 두었다.
+        // 순정은 세기가 1.0 이라 켜도 티가 거의 안 난다. 설치하고도 뭐가 달라졌는지
+        // 모르겠다는 소리가 거기서 나왔다.
+        //
+        // 아래 값은 대표님 데이즈곤에서 쓰고 계신 설정을 그대로 옮긴 것이다.
+        // 2026-09-25 같은 자리에서 한 값씩 바꿔 찍어 고른 값이고,
+        // NRStyle 1(natural) 은 옵티 길의 Style 1 과 같은 선택이다.
+        //
+        // 주의 - 이 값들은 덮어쓴다. 애드온은 게임을 끌 때 ini 에 모든 키를 쓰므로
+        // 한 번이라도 켜 본 분은 키가 전부 들어 있다. "없을 때만 쓰기"로 하면
+        // 그분들에게는 새 기본값이 영영 안 간다. 창에서 바로 되돌릴 수 있는 값들이다.
+        struct RdSet { const char* key; const char* val; };
+        static const RdSet RD[] = {
+            { "NRIntensity",      "2" },   // 이마.볼 +50.4%, 프레임 변화 없음
+            { "NRLocalStructure", "2" },   // 수염 +57.9%. 이 길에서 가장 큰 폭
+            { "NRSkinStructure",  "1" },
+            { "NRLocalTone",      "0" },   // 올리면 납작해진다 (2.0 에서 얼굴 -12.8%)
+            { "NRGlobalTone",     "1" },
+            { "NRColorStrength",  "1" },
+            { "NRUpscaledPasses", "1" },   // 기본 1패스. 창에서 올릴 수 있다
+            { "NRRenderPasses",   "0" },
+            { "NRPresentPasses",  "0" },
+            { "EnableHooks",      "2" },
+        };
+        for (int ri = 0; ri < (int)(sizeof(RD) / sizeof(RD[0])); ri++) {
+            SetIniKey(rsIni, "RenoDX.DLSS5", RD[ri].key, RD[ri].val);
+        }
+        Log(L"  신경망 기본값을 맞췄습니다 (Natural, 1패스).");
+
+        // NRStyle 은 따로 다룬다. 2 로 되어 있으면 다음 실행 때 게임이 안 켜진다.
+        // 제작자 문서에 적힌 알려진 문제다. 1(natural) 로 맞추되 2 는 반드시 치운다.
         std::string cur2 = ReadFileBytes(rsIni);
         if (cur2.find("NRStyle=2") != std::string::npos) {
-            if (SetIniKey(rsIni, "RenoDX.DLSS5", "NRStyle", "0"))
-                Log(L"  NR Style 이 2 로 되어 있어 0 으로 되돌렸습니다. (2 는 다음 실행 때 게임이 안 켜집니다)");
-        } else if (cur2.find("NRStyle=") == std::string::npos) {
-            SetIniKey(rsIni, "RenoDX.DLSS5", "NRStyle", "0");
+            if (SetIniKey(rsIni, "RenoDX.DLSS5", "NRStyle", "1"))
+                Log(L"  NR Style 이 2 로 되어 있어 1 로 되돌렸습니다. (2 는 다음 실행 때 게임이 안 켜집니다)");
+        } else {
+            SetIniKey(rsIni, "RenoDX.DLSS5", "NRStyle", "1");
         }
     }
 
@@ -3180,7 +3422,7 @@ static DWORD WINAPI WorkThread(LPVOID param) {
             Log(L"전에 받다 만 파일이 있어 지우고 다시 받습니다.");
             DeleteFileW(zip.c_str());
         }
-        Log(L"OptiScaler " + std::wstring(OPTI_VER) + L" 를 내려받고 있습니다. 약 130MB, 인터넷 속도에 따라 몇 분 걸립니다.");
+        Log(L"OptiScaler " + std::wstring(OPTI_VER) + L" 를 내려받고 있습니다. 약 145MB, 인터넷 속도에 따라 몇 분 걸립니다.");
         // 박아 둔 주소는 새 판이 나오면 죽는다. 먼저 최신 주소를 물어본다.
         Status(L"최신 판이 있는지 확인하는 중입니다...");
         std::wstring useUrl = FetchLatestOptiUrl();

@@ -534,3 +534,12 @@ DLSS 1.0 게임인데 사용자가 계속하기를 골랐습니다.|||DLSS 1.0 g
   DLSS 5 신경망 파일은 615.00 이상을 요구합니다.|||  The DLSS 5 neural file requires 615.00 or newer.
   낮은 드라이버에서는 게임에 따라 켜자마자 꺼질 수 있습니다.|||  On older drivers some games close right after starting.
   엔비디아 앱에서 드라이버를 올리신 뒤 쓰시는 것이 좋습니다.|||  Update the driver in the NVIDIA app before using this.
+
+콜 오브 듀티|||Call of Duty
+콜 오브 듀티 워존|||Call of Duty Warzone
+  신경망 기본값을 맞췄습니다 (Natural, 1패스).|||  Set the neural rendering defaults (Natural, 1 pass).
+  NR Style 이 2 로 되어 있어 1 로 되돌렸습니다. (2 는 다음 실행 때 게임이 안 켜집니다)|||  NR Style was 2; set it back to 1. (With 2 the game does not start next time)
+ 를 내려받고 있습니다. 약 145MB, 인터넷 속도에 따라 몇 분 걸립니다.||| is downloading. About 145MB; this can take a few minutes depending on your connection.
+
+  없던 항목을 붙였습니다: |||  Added a missing entry: 
+  설정 %d개를 적용했습니다. (새로 붙인 것 %d개)|||  Applied %d settings. (%d newly added)
