@@ -18,7 +18,7 @@
 
 // ================================================================ 설정
 // 버전 규칙: 아래 OPTI_URL(내려받기 주소)을 바꿀 때마다 맨 뒷자리를 1 올린다.
-static const wchar_t* APP_VER  = L"1.0.3.0";
+static const wchar_t* APP_VER  = L"1.0.3.1";
 static const wchar_t* OPTI_VER = L"F5-DLSSNR v0.1.33";
 static const wchar_t* OPTI_URL =
     L"https://github.com/janblade/OptiScaler-F5-DLSSNR-Multipass/releases/download/v0.1.33/OptiScaler-DLSSNR-F5-0.1.33-with-dlss-fg.zip";
@@ -145,7 +145,11 @@ static std::wstring g_gpuFake;
 #define WM_STATUS (WM_APP+2)
 #define WM_DONE   (WM_APP+3)
 
-static void Log(const std::wstring& s)    { PostMessageW(g_hWnd, WM_LOG,    0, (LPARAM)_wcsdup(s.c_str())); }
+// 게임을 고를 때마다 어느 길로 갈지 미리 살피는데, 그때까지 진행 기록에 남으면
+// 사용자가 아직 누르지도 않은 일이 적힌다. 그 동안만 기록을 잠근다. (2026-10-23)
+static bool g_logMuted = false;
+static void Log(const std::wstring& s)    { if (g_logMuted) { return; }
+                                            PostMessageW(g_hWnd, WM_LOG,    0, (LPARAM)_wcsdup(s.c_str())); }
 static void Status(const std::wstring& s) { PostMessageW(g_hWnd, WM_STATUS, 0, (LPARAM)_wcsdup(s.c_str())); }
 
 // ================================================================ 파일 유틸
@@ -438,6 +442,10 @@ static bool IsOurReShadePreset(const std::wstring& path) {
     return true;
 }
 
+static bool IsOurDlssRuntime(const std::wstring& path);
+static bool IsREFramework(const std::wstring& path);
+static bool DisableFeedTechniques(const std::wstring& presetPath);
+
 static int CheckRevertLeftovers(const std::wstring& gameDir, std::wstring& reportOut) {
     std::wstring NL(1, (wchar_t)10);
     std::wstring bad;
@@ -468,11 +476,69 @@ static int CheckRevertLeftovers(const std::wstring& gameDir, std::wstring& repor
         else swept++;
     }
 
+    // RenoDX 애드온이 올라올 때 만드는 설정 백업을 치운다.
+    //   ReShade.ini.renodx-dlss5-pre-v4-migration-20261023-162148.bak
+    // 날짜가 붙어 이름이 매번 달라서 목록으로는 못 잡는다. 앞머리로 찾는다.
+    // 2026-10-23 바이오하자드 RE4 에서 되돌린 뒤 남아 있는 것을 보고 넣었다.
+    {
+        WIN32_FIND_DATAW fd;
+        std::wstring pat = gameDir + L"\\ReShade.ini.renodx-dlss5-*.bak";
+        HANDLE h = FindFirstFileW(pat.c_str(), &fd);
+        if (h != INVALID_HANDLE_VALUE) {
+            do {
+                if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) { continue; }
+                std::wstring p = gameDir + L"\\" + fd.cFileName;
+                DeleteFileW(p.c_str());
+                if (FileExists(p)) {
+                    bad += std::wstring(L"  - ") + fd.cFileName + NL;
+                    miss++;
+                } else {
+                    swept++;
+                }
+            } while (FindNextFileW(h, &fd));
+            FindClose(h);
+        }
+    }
+
+    // 설치할 때 꺼 둔 REFramework 을 원래 이름으로 돌려놓는다.
+    // 우리가 붙인 이름이지만, 혹시 모르니 내용까지 보고 돌려놓는다.
+    {
+        std::wstring di  = gameDir + L"\\dinput8.dll";
+        std::wstring off = gameDir + L"\\dinput8.dll.off";
+        if (FileExists(off) && !FileExists(di) && IsREFramework(off)) {
+            if (MoveFileW(off.c_str(), di.c_str())) {
+                swept++;
+            } else {
+                bad += std::wstring(L"  - dinput8.dll.off 를 되돌리지 못했습니다") + NL;
+                miss++;
+            }
+        }
+    }
+
+    // nvngx_dlss.dll 은 여기서 지우지 않는다.
+    //
+    // 2026-10-23. 한 번 "우리 것이면 지운다" 로 넣었다가 빼냈다. 레데리2 의 게임 폴더에
+    // 있는 파일도, 백업 폴더에 있는 파일도 우리 것과 크기·해시가 완전히 같다.
+    //   58956400  C85F971CE023C9F3...  우리 것
+    //   58956400  C85F971CE023C9F3...  레데리2 게임 폴더
+    //   58956400  C85F971CE023C9F3...  레데리2 백업 폴더
+    // 그 규칙대로면 되돌리기가 둘 다 지워서 레데리2 의 DLSS 가 통째로 날아간다.
+    // 우리가 이번 설치에서 넣은 것이면 설치 기록에 적혀 있고, 그 기록을 따라
+    // 이미 지워진다. 기록에 없는 것은 건드리지 않는다.
+    // 남아 있더라도 설치할 때 IsOurDlssRuntime 으로 걸러내므로 길이 뒤집히지는 않는다.
+
     // 폴더. _DLSS5_backup 은 사용자의 원래 파일 자리라 손대지 않는다.
     // 2026-10-22. docs 와 redist 는 janblade 포크가 새로 넣는 폴더다.
     // 매니페스트로 파일은 지워지지만 빈 폴더가 남는다.
-    const wchar_t* dirs[] = { L"OptiScaler", L"Licenses", L"host64", L"docs", L"redist" };
-    for (int i = 0; i < 5; i++) {
+    // 2026-10-23. dlss5 는 RenoDX 애드온이 만드는 폴더다 (dlss5_log, state).
+    // 애드온이 없으면 쓸모가 없고, 다시 깔면 다시 만들어진다.
+    //
+    // reshade-cache 는 일부러 안 지운다. 구워 둔 셰이더라 지우면 다시 깔 때마다
+    // 886개를 또 굽는다(23초). 남겨 두면 2초면 끝난다. 리세이드가 안 맞는 것은
+    // 알아서 버리므로 묵은 캐시가 문제를 일으키지 않는다.
+    const wchar_t* dirs[] = { L"OptiScaler", L"Licenses", L"host64", L"docs", L"redist",
+                              L"dlss5" };
+    for (int i = 0; i < (int)(sizeof(dirs) / sizeof(dirs[0])); i++) {
         std::wstring p = gameDir + L"\\" + dirs[i];
         if (!DirExists(p)) continue;
         RemoveTree(p);
@@ -489,12 +555,17 @@ static int CheckRevertLeftovers(const std::wstring& gameDir, std::wstring& repor
         }
     }
 
-    // 우리가 만든 프리셋이면 치운다. 사용자 것이면 그대로 둔다.
+    // 우리가 만든 프리셋이면 치운다.
+    // 사용자 것이면 파일은 그대로 두고, 우리가 켠 효과 둘만 뺀다. (2026-10-23 매드맥스)
     {
         std::wstring pr = gameDir + L"\\ReShadePreset.ini";
-        if (FileExists(pr) && IsOurReShadePreset(pr)) {
-            DeleteFileW(pr.c_str());
-            if (!FileExists(pr)) {
+        if (FileExists(pr)) {
+            if (IsOurReShadePreset(pr)) {
+                DeleteFileW(pr.c_str());
+                if (!FileExists(pr)) {
+                    swept++;
+                }
+            } else if (DisableFeedTechniques(pr)) {
                 swept++;
             }
         }
@@ -1315,6 +1386,123 @@ static std::wstring EngineDllNear(const std::wstring& exe) {
     return best;
 }
 
+// 게임 폴더에 있는 nvngx_dlss.dll 이 게임 것인가, 우리가 넣은 것인가.
+//
+// 2026-10-23 바이오하자드 RE4 에서 물렸다. 되돌리기 없이 그 위에 덮어 설치하면
+// 설치 기록이 새것으로 바뀌면서, 먼젓번에 우리가 넣은 파일이 주인 없는 파일이 된다.
+// 그 뒤 되돌리기를 해도 기록에 없으니 안 지워지고, 다음 설치 때 그 파일을
+// 게임 것으로 보고 OptiScaler 길로 가 버린다.
+// RenoDX 애드온이 있나로 가리던 줄이 있었는데, 되돌리기가 애드온만 지우고
+// 이 파일은 남겨서 그 방법으로는 못 가린다.
+// 흔적 말고 파일 자체를 우리 것과 대조한다. 크기부터 보고 같을 때만 CRC 를 낸다.
+static bool IsOurDlssRuntime(const std::wstring& path) {
+    std::wstring mine = SelfDir() + L"\\" + DATA_DIR + L"\\" + FEED_DIR + L"\\" + DLSS_DLL;
+    if (!FileExists(path) || !FileExists(mine)) { return false; }
+    long long a = FileSizeOf(path);
+    long long b = FileSizeOf(mine);
+    if (a <= 0 || a != b) { return false; }
+    return Crc32File(path) == Crc32File(mine);
+}
+
+// 불칸 게임인가.
+//
+// 리세이드 + RenoDX 길은 불칸에서 안 된다. 레데리2 로 밤을 새우고 안 된다는
+// 결론을 낸 자리다. 그래서 "DLSS 런타임이 없으면 리세이드 길" 규칙에서
+// 불칸만은 빼 준다. 거기로 보내면 될 길이 없어진다.
+//
+// 게임 이름 목록만으로는 약해서 실행 파일 안의 vulkan-1.dll 이름도 같이 본다.
+// 유니코드로 적힌 이름도 잡으려고 0 바이트를 빼고 소문자로 바꿔서 찾는다.
+static bool LooksLikeVulkanGame(const std::wstring& exe) {
+    std::wstring l = LowerW(exe);
+    if (l.find(L"red dead redemption 2") != std::wstring::npos
+     || l.find(L"doom") != std::wstring::npos
+     || l.find(L"wolfenstein") != std::wstring::npos
+     || l.find(L"no man's sky") != std::wstring::npos) {
+        return true;
+    }
+    HANDLE h = CreateFileW(exe.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL,
+                           OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+    if (h == INVALID_HANDLE_VALUE) { return false; }
+    std::vector<char> buf(1 << 20);
+    std::string tail;
+    DWORD got = 0;
+    bool hit = false;
+    while (!hit && ReadFile(h, &buf[0], (DWORD)buf.size(), &got, NULL) && got > 0) {
+        std::string chunk = tail;
+        chunk.reserve(tail.size() + got);
+        for (DWORD i = 0; i < got; i++) {
+            char c = buf[i];
+            if (c == 0) { continue; }
+            if (c >= 'A' && c <= 'Z') { c = (char)(c - 'A' + 'a'); }
+            chunk.push_back(c);
+        }
+        if (chunk.find("vulkan-1.dll") != std::string::npos) { hit = true; }
+        tail = (chunk.size() > 32) ? chunk.substr(chunk.size() - 32) : chunk;
+    }
+    CloseHandle(h);
+    return hit;
+}
+
+// 실행 파일에 "확실한" DLSS 표식이 있는가.
+//
+// GameSupportsDlss 는 NVSDK_NGX / nvngx / sl.interposer / DLSS 넷 중 하나만 걸려도 1 이다.
+// 그중 "DLSS" 는 가장 약한 표식이다. 엔진이 통로만 들고 있어도 잡힌다.
+// 나머지 셋은 엔비디아 라이브러리를 실제로 부르는 코드가 있다는 뜻이라 훨씬 믿을 만하다.
+//
+// 2026-10-23 실측 (이 PC 의 게임들)
+//   섀도우툼레이더  NVSDK_NGX · nvngx · DLSS   진짜 DLSS 게임
+//   라오어1        DLSS 만                    (streamline 파일이 따로 있어 그쪽에서 걸린다)
+//   바이오하자드RE4 DLSS 만                    엔비디아 앱에서도 "지원되지 않음"
+//   매드맥스        없음
+// 그래서 런타임이 없다고 리세이드 길로 내려보낼 때는 "DLSS 글자 하나뿐"일 때만 그렇게 한다.
+static bool ExeHasStrongDlssMark(const std::wstring& path) {
+    HANDLE h = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL,
+                           OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+    if (h == INVALID_HANDLE_VALUE) { return false; }
+    const char* strong[] = { "NVSDK_NGX", "nvngx", "sl.interposer" };
+    std::vector<char> buf(1 << 20);
+    std::string tail;
+    DWORD got = 0;
+    bool hit = false;
+    while (!hit && ReadFile(h, &buf[0], (DWORD)buf.size(), &got, NULL) && got > 0) {
+        std::string chunk = tail + std::string(&buf[0], got);
+        for (int i = 0; i < 3 && !hit; i++) {
+            if (chunk.find(strong[i]) != std::string::npos) { hit = true; }
+        }
+        tail = (chunk.size() > 32) ? chunk.substr(chunk.size() - 32) : chunk;
+    }
+    CloseHandle(h);
+    return hit;
+}
+
+// 이 dinput8.dll 이 REFramework 인가.
+//
+// dinput8.dll 은 ASI 로더·스크립트훅 등 다른 모드도 흔히 쓰는 이름이다.
+// 이름만 보고 치우면 남의 모드를 멋대로 끄게 된다. 그래서 파일 안에 박힌
+// 이름으로 가린다. 둘 다 있을 때만 REFramework 으로 본다.
+//
+// 2026-10-23 바이오하자드 RE4 에서 확인. REFramework 과 우리 것을 같이 넣으면
+// 게임을 시작하는 순간 꺼진다. 터진 모듈이 dinput8.dll 로 찍힌다.
+// 제작자 깃허브에도 같은 제보가 여러 건 올라와 있고(#1635 #1590 #1683),
+// 제작자 공지에 DLSS 프레임 생성이 무작위 크래시의 원인이라고 적혀 있다.
+static bool IsREFramework(const std::wstring& path) {
+    HANDLE h = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL,
+                           OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+    if (h == INVALID_HANDLE_VALUE) { return false; }
+    std::vector<char> buf(1 << 20);
+    std::string tail;
+    DWORD got = 0;
+    bool name = false, who = false;
+    while (!(name && who) && ReadFile(h, &buf[0], (DWORD)buf.size(), &got, NULL) && got > 0) {
+        std::string chunk = tail + std::string(&buf[0], got);
+        if (chunk.find("REFramework") != std::string::npos) { name = true; }
+        if (chunk.find("praydog") != std::string::npos) { who = true; }
+        tail = (chunk.size() > 32) ? chunk.substr(chunk.size() - 32) : chunk;
+    }
+    CloseHandle(h);
+    return name && who;
+}
+
 // 설치 방식 판단용. exe 가 크면 예전과 똑같이 exe 만 본다.
 // exe 가 작으면 옆의 게임 본체 dll 에 DLSS 가 들어 있는지도 본다.
 static int GameSupportsDlssFor(const std::wstring& exe) {
@@ -1347,18 +1535,73 @@ static int GameSupportsDlssFor(const std::wstring& exe) {
             Log(std::wstring(L"  ") + sure[i] + L" 이(가) 있습니다. DLSS 를 쓰는 게임입니다.");
             return 1;
         }
-        // nvngx_dlss.dll 은 ReShade 방식으로 설치할 때 우리가 직접 넣는다.
-        // 그러니 우리가 넣은 흔적(RenoDX 애드온)이 없을 때만 증거로 쓴다.
-        if (FileExists(dir + L"\\" + DLSS_DLL) && !FileExists(dir + L"\\" + RENODX_ADDON)) {
-            Log(std::wstring(L"  ") + DLSS_DLL + L" 이(가) 있습니다. DLSS 를 쓰는 게임입니다.");
-            return 1;
+        // nvngx_dlss.dll 은 우리도 넣는 파일이라 게임 것인지 우리 것인지 가려야 한다.
+        // 애드온이 있나로 가리던 줄이었는데, 되돌리기가 애드온만 지우고 이 파일은
+        // 남기는 경우가 있어서 못 가렸다. (2026-10-23 바이오하자드 RE4)
+        // 이제 파일 자체를 우리 것과 대조한다. 게임사는 자기가 넣은 판을 쓰므로
+        // 크기와 CRC 가 우리 것과 똑같으면 우리가 넣은 것이다.
+        if (FileExists(dir + L"\\" + DLSS_DLL)) {
+            if (IsOurDlssRuntime(dir + L"\\" + DLSS_DLL)) {
+                Log(std::wstring(L"  ") + DLSS_DLL + L" 은 우리가 넣었던 파일입니다. 증거로 쓰지 않습니다.");
+            } else {
+                Log(std::wstring(L"  ") + DLSS_DLL + L" 이(가) 있습니다. DLSS 를 쓰는 게임입니다.");
+                return 1;
+            }
         }
     }
+    // 어느 파일에서 DLSS 를 찾았는지 기억해 둔다.
+    // 2026-10-23 킹덤컴2. KingdomCome.exe 는 1.5MB 껍데기라 표식이 하나도 없고,
+    // 옆의 WHGameArm.dll(102MB)에 NVSDK_NGX·nvngx 가 들어 있다.
+    // 증거를 본체 dll 에서 찾아 놓고 아래 확실한 표식 검사를 껍데기 exe 로 하면,
+    // 진짜 DLSS 게임이 리세이드 길로 내려간다.
+    std::wstring probe = exe;
     int r = GameSupportsDlss(exe);
-    if (r != 0) return r;
-    if (FileSizeOf(exe) >= GAME_EXE_MIN) return 0;
-    std::wstring eng = EngineDllNear(exe);
-    return eng.empty() ? 0 : GameSupportsDlss(eng);
+    if (r == 0 && FileSizeOf(exe) < GAME_EXE_MIN) {
+        std::wstring eng = EngineDllNear(exe);
+        if (!eng.empty()) {
+            r = GameSupportsDlss(eng);
+            if (r == 1) { probe = eng; }
+        }
+    }
+    if (r != 1) { return r; }
+
+    // 여기까지 왔다는 건, 실행 파일은 DLSS 를 아는데 그 옆에 DLSS 런타임이
+    // 하나도 없다는 뜻이다. 위 검사에서 찾았으면 벌써 1 을 돌려줬을 것이다.
+    //
+    // 2026-10-23 바이오하자드 RE4. 캡콤 RE 엔진은 엔진 차원에서 DLSS 통로를 들고 있어
+    // (via.render.DLSSUpscalingInterface, isDLSSAvailable) 어느 게임이든 글자가 잡힌다.
+    // 같은 엔진이라도 쓰는 게임이 있고 안 쓰는 게임이 있다. RE4 는 안 쓴다 —
+    // 엔비디아 앱에서도 DLSS 오버라이드 세 항목이 모두 "지원되지 않음" 으로 나온다.
+    //
+    // 쓰는 게임은 런타임을 들고 있다.
+    //   위쳐3    bin/x64_dx12/nvngx_dlss.dll    58,956,912
+    //   킹덤컴2   Bin/Win64Shared/nvngx_dlss.dll  48,971,808
+    //   붉은사막  bin64/nvngx_dlss.dll           58,956,912
+    //   RE4      없음
+    //
+    // OptiScaler 는 게임이 부르는 DLSS/FSR 을 가로채는 방식이다. 게임이 부르지 않으면
+    // 올라와도 할 일이 없어 창조차 열리지 않는다. 그런 게임은 리세이드 길로 보낸다.
+    // 확실한 표식(NVSDK_NGX · nvngx · sl.interposer)이 있으면 진짜 DLSS 게임이다.
+    // 런타임 파일이 안 보이는 건 예전에 우리 파일이 그 자리에 들어가 앉았거나
+    // 실행 파일 옆이 아닌 다른 폴더에 있는 경우다. 내려보내지 않는다.
+    // 2026-10-23. 섀도우 오브 더 툼레이더가 여기서 뒤집힐 뻔했다.
+    if (ExeHasStrongDlssMark(probe)) {
+        Log(L"  DLSS 런타임이 안 보이지만 실행 파일에 엔비디아 호출이 들어 있습니다.");
+        Log(L"  진짜 DLSS 게임이라 OptiScaler 방식으로 갑니다.");
+        return 1;
+    }
+
+    // 불칸은 예외다. 리세이드 길에서 안 되는 것이 확인돼 있어서, 내려보내면
+    // 갈 길이 아예 없어진다. 런타임이 없어도 OptiScaler 로 둔다.
+    if (LooksLikeVulkanGame(probe)) {
+        Log(L"  DLSS 런타임이 없지만 불칸 게임입니다.");
+        Log(L"  불칸은 리세이드 방식으로 신경망을 걸 수 없어 OptiScaler 방식으로 갑니다.");
+        return 1;
+    }
+
+    Log(L"  실행 파일은 DLSS 를 아는데 DLSS 런타임이 하나도 없습니다.");
+    Log(L"  엔진이 통로만 들고 있고 이 게임은 쓰지 않는 경우입니다. 리세이드 방식으로 갑니다.");
+    return 0;
 }
 
 // 파일 안에 적힌 그래픽 dll 이름을 찾는다.
@@ -1970,7 +2213,7 @@ static bool IsElevated() {
     return ok && el.TokenIsElevated != 0;
 }
 
-// ini 항목 하나만 바꾼다 (없는 항목은 만들지 않는다)
+// ini 항목 하나만 바꾼다. 항목이 없으면 그 섹션 끝에 만들고, 섹션도 없으면 섹션째 만든다.
 static bool SetIniKey(const std::wstring& iniPath, const char* wantSec,
                       const char* wantKey, const char* val) {
     const char NL = (char)10;
@@ -2079,6 +2322,81 @@ static std::string GetIniKey(const std::wstring& iniPath, const char* wantSec,
         return val.substr(vs, ve - vs + 1);
     }
     return "";
+}
+
+// ini 는 바이트로 다루므로, 경로를 넣으려면 UTF-8 로 바꿔야 한다.
+static std::string WideToUtf8(const std::wstring& w) {
+    if (w.empty()) { return std::string(); }
+    int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), (int)w.size(), NULL, 0, NULL, NULL);
+    if (n <= 0) { return std::string(); }
+    std::string s((size_t)n, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, w.c_str(), (int)w.size(), &s[0], n, NULL, NULL);
+    return s;
+}
+
+// 리세이드가 구운 셰이더를 어디에 둘지 정한다.
+//
+// 2026-10-23. 안 적어 주면 리세이드는 윈도우 임시 폴더를 쓴다.
+// 그런데 모든 게임이 그 폴더 하나를 같이 쓴다. 이 PC 에서 8일 만에
+// 파일 159,746개 2.3GB 가 쌓여 있었다. 두 가지가 터진다.
+//   1. 저장 공간 센스나 디스크 정리가 임시 폴더를 비우면 886개를 처음부터 다시 굽는다
+//   2. 파일 16만 개짜리 폴더에서 찾느라, 캐시를 쓰는 게 안 쓰는 것만큼 느려진다
+// 게임 폴더에 두면 둘 다 없어진다.
+//   바이오하자드 RE4 실측 (효과 1023개): 처음 굽기 27.6초 -> 그다음 3.5초.
+//
+// 사용자가 손수 정해 둔 자리는 건드리지 않는다. 임시 폴더를 가리킬 때만 바꾼다.
+static void SetReShadeCachePath(const std::wstring& iniPath) {
+    if (!FileExists(iniPath)) { return; }
+    size_t cut0 = iniPath.find_last_of(L"\\");
+    if (cut0 == std::wstring::npos) { return; }
+    std::wstring want = iniPath.substr(0, cut0) + L"\\reshade-cache";
+
+    std::string cur = GetIniKey(iniPath, "GENERAL", "IntermediateCachePath");
+    std::string low = LowerA(cur);
+    std::string wantLow = LowerA(WideToUtf8(want));
+    // 이미 우리 자리를 가리키고 있어도 그냥 넘어가면 안 된다. 폴더가 없으면
+    // 리세이드는 또 임시 폴더로 돌아간다. 2026-10-23 킹덤컴2 에서 걸렸다.
+    // 전체 경로로만 견주면 안 된다. 중간 빌드가 상대 경로(.\reshade-cache)로 적어 둔
+    // 값이 남아 있으면 못 알아보고 "직접 정하신 것" 으로 넘어간다.
+    // 2026-10-23 데이즈곤에서 걸렸다. 끝이 reshade-cache 면 우리 자리로 본다.
+    std::string tailName = "reshade-cache";
+    bool endsWithOurs = low.size() >= tailName.size()
+                     && low.compare(low.size() - tailName.size(), tailName.size(), tailName) == 0;
+    bool alreadyOurs = (low == wantLow) || endsWithOurs;
+    bool mine = cur.empty()
+             || alreadyOurs
+             || low.find("\\temp\\") != std::string::npos
+             || low.find("/temp/")  != std::string::npos;
+    if (!mine) {
+        Log(L"  셰이더 캐시 자리는 직접 정해 두셔서 그대로 둡니다.");
+        return;
+    }
+    // 전체 경로까지 똑같을 때만 그대로 둔다. 상대 경로로 적혀 있으면 아래에서 다시 적는다.
+    if (low == wantLow) {
+        if (!DirExists(want)) { CreateDirectoryW(want.c_str(), NULL); }
+        if (DirExists(want)) {
+            Log(L"  셰이더 캐시 자리는 이미 게임 폴더입니다. 폴더가 있는지만 확인했습니다.");
+        } else {
+            Log(L"  [경고] 셰이더 캐시 폴더를 만들지 못했습니다. 임시 폴더를 그대로 씁니다.");
+        }
+        return;
+    }
+    // 2026-10-23. 폴더를 먼저 만들어야 한다.
+    // 리세이드는 없는 폴더를 가리키면 말없이 윈도우 임시 폴더로 돌아간다.
+    // 라오어1 에서 설정은 들어갔는데 효과 994개가 전부 임시 폴더로 들어간 것을 보고 찾았다.
+    // 자리도 전체 경로로 적는다. 상대 경로는 게임이 작업 폴더를 바꾸면 엉뚱한 데를 가리킨다.
+    size_t cut = iniPath.find_last_of(L"\\");
+    if (cut == std::wstring::npos) { return; }
+    std::wstring dir = iniPath.substr(0, cut) + L"\\reshade-cache";
+    if (!DirExists(dir)) { CreateDirectoryW(dir.c_str(), NULL); }
+    if (!DirExists(dir)) {
+        Log(L"  [경고] 셰이더 캐시 폴더를 만들지 못했습니다. 임시 폴더를 그대로 씁니다.");
+        return;
+    }
+    std::string val = WideToUtf8(dir);
+    if (SetIniKey(iniPath, "GENERAL", "IntermediateCachePath", val.c_str())) {
+        Log(L"  셰이더 캐시를 게임 폴더에 두도록 했습니다. (두 번째 실행부터 빨라집니다)");
+    }
 }
 
 // 다운로드 폴더에 받아 둔 압축 파일에서 신경망 파일만 꺼낸다
@@ -2297,6 +2615,65 @@ static bool HasFxFiles(const std::wstring& dir, int depth) {
 // 리세이드 프리셋에 필요한 효과 두 개를 켠다.
 // 모션 벡터를 만들어 주는 효과가 꺼져 있으면 신경망이 움직임 정보를 못 받는다.
 // 순서도 중요하다. 모션 벡터가 DLSS5_Feed 보다 앞에 와야 한다.
+// 되돌릴 때 프리셋에서 우리가 켠 효과 둘만 뺀다. 사용자가 켜 둔 것은 그대로 둔다.
+//
+// 2026-10-23 매드맥스에서 찾았다. 되돌린 뒤 효과 파일(DLSS5_Feed.fx, dh_uber_motion.fx)은
+// 지워지는데 프리셋은 그 이름을 계속 불러서, 다음에 리세이드 창을 열면 없는 효과를
+// 찾느라 오류가 난다. 넣을 때 켰으면 뺄 때 꺼야 한다.
+static bool DisableFeedTechniques(const std::wstring& presetPath) {
+    const char NL = (char)10;
+    const char* OURS[] = { "DH_UBER_MOTION_020@dh_uber_motion.fx", "DLSS5_Feed@DLSS5_Feed.fx" };
+    std::string t = ReadFileBytes(presetPath);
+    if (t.empty()) { return false; }
+    bool touched = false;
+    std::vector<std::string> lines;
+    size_t start = 0;
+    while (start <= t.size()) {
+        size_t nl = t.find(NL, start);
+        if (nl == std::string::npos) { lines.push_back(t.substr(start)); break; }
+        lines.push_back(t.substr(start, nl - start + 1));
+        start = nl + 1;
+    }
+    for (size_t i = 0; i < lines.size(); i++) {
+        const char* keys[] = { "Techniques=", "TechniqueSorting=" };
+        for (int k = 0; k < 2; k++) {
+            size_t kl = strlen(keys[k]);
+            if (lines[i].compare(0, kl, keys[k]) != 0) { continue; }
+            std::string rest = lines[i].substr(kl);
+            std::string tail;
+            while (!rest.empty() && (rest[rest.size() - 1] == (char)13
+                                  || rest[rest.size() - 1] == (char)10)) {
+                tail = std::string(1, rest[rest.size() - 1]) + tail;
+                rest.erase(rest.size() - 1);
+            }
+            std::vector<std::string> keep;
+            size_t p = 0;
+            while (p <= rest.size()) {
+                size_t c = rest.find(',', p);
+                std::string one = (c == std::string::npos) ? rest.substr(p) : rest.substr(p, c - p);
+                bool mine = false;
+                for (int m = 0; m < 2; m++) {
+                    if (one == OURS[m]) { mine = true; }
+                }
+                if (mine) { touched = true; }
+                else if (!one.empty()) { keep.push_back(one); }
+                if (c == std::string::npos) { break; }
+                p = c + 1;
+            }
+            std::string joined;
+            for (size_t j = 0; j < keep.size(); j++) {
+                if (j) { joined += ","; }
+                joined += keep[j];
+            }
+            lines[i] = std::string(keys[k]) + joined + tail;
+        }
+    }
+    if (!touched) { return false; }
+    std::string out;
+    for (size_t i = 0; i < lines.size(); i++) { out += lines[i]; }
+    return WriteFileBytes(presetPath, out);
+}
+
 static bool EnableFeedTechniques(const std::wstring& presetPath) {
     const char* WANT = "DH_UBER_MOTION_020@dh_uber_motion.fx,DLSS5_Feed@DLSS5_Feed.fx";
     const char NL = (char)10;
@@ -2761,7 +3138,14 @@ static bool InstallReShadeBeside(const std::wstring& gameDir, const std::wstring
         return false;
     }
     added.push_back(name);
-    Log(L"  리세이드를 " + name + L" 로 넣었습니다. (dxgi.dll 은 DLSS 5 가 쓰고 있습니다)");
+    // 2026-10-23. 자리 이름이 박혀 있어서, 옵티가 winmm 으로 들어간 게임에서도
+    // "dxgi.dll 은 DLSS 5 가 쓰고 있습니다" 라고 적었다. 호라이즌FW 에서 걸렸다.
+    {
+        wchar_t b[260];
+        swprintf_s(b, L"  리세이드를 %s 로 넣었습니다. (%s 은 DLSS 5 가 쓰고 있습니다)",
+                   name.c_str(), optiProxy.c_str());
+        Log(b);
+    }
 
     std::wstring iniDst = gameDir + L"\\" + RS_INI;
     if (FileExists(iniDst)) {
@@ -2779,6 +3163,7 @@ static bool InstallReShadeBeside(const std::wstring& gameDir, const std::wstring
         added.push_back(RS_INI);
         Log(L"  ReShade.ini 를 넣었습니다. (숫자 8 키로 창이 열립니다. Insert 는 DLSS 5 창입니다)");
     }
+    SetReShadeCachePath(iniDst);
 
     std::wstring shDst = gameDir + L"\\" + RS_SHADERS;
     if (HasFxFiles(shDst, 3)) {
@@ -2852,6 +3237,7 @@ static bool InstallFeeder(const std::wstring& gameDir, std::vector<std::wstring>
             added.push_back(RS_INI);
             Log(L"  ReShade.ini 를 넣었습니다. (숫자 8 키로 창이 열립니다)");
         }
+        SetReShadeCachePath(iniDst);
 
         std::wstring shDst = gameDir + L"\\" + RS_SHADERS;
         if (HasFxFiles(shDst, 3)) {
@@ -3334,12 +3720,31 @@ static DWORD WINAPI WorkThread(LPVOID param) {
             Log(L"  → 실행 파일을 읽지 못해 판단할 수 없습니다. 기본값인 OptiScaler 방식으로 갑니다.");
             Log(L"     아무 변화가 없으면 [진행 기록 복사]를 눌러 게시물 댓글에 붙여넣어 주세요.");
         }
+
         LRESULT as2 = 0;
         std::wstring gl = LowerW(gameDir);
         modeBVulkan = (as2 == 2) || (as2 == 0 &&
             (gl.find(L"red dead redemption 2") != std::wstring::npos
           || gl.find(L"doom") != std::wstring::npos
           || gl.find(L"wolfenstein") != std::wstring::npos));
+    }
+
+    // REFramework 이 들어 있으면 잠시 꺼 둔다. 같이 올라오면 게임 시작할 때 꺼진다.
+    // 지우지 않고 이름만 바꾼다. 되돌리기가 원래 이름으로 돌려놓는다.
+    {
+        std::wstring di  = gameDir + L"\\dinput8.dll";
+        std::wstring off = gameDir + L"\\dinput8.dll.off";
+        if (FileExists(di) && IsREFramework(di)) {
+            if (FileExists(off)) { DeleteFileW(off.c_str()); }
+            if (MoveFileW(di.c_str(), off.c_str())) {
+                Log(L"REFramework 이 들어 있어 잠시 꺼 두었습니다. (dinput8.dll → dinput8.dll.off)");
+                Log(L"  둘을 같이 올리면 게임을 시작하는 순간 꺼집니다. 제작자 쪽에도 같은 제보가 많습니다.");
+                Log(L"  [되돌리기] 를 누르면 원래 이름으로 돌려놓습니다.");
+            } else {
+                Log(L"[경고] REFramework(dinput8.dll)을 꺼 두지 못했습니다. 게임을 끄고 다시 눌러 주세요.");
+                Log(L"  이대로 두면 게임을 시작할 때 꺼질 수 있습니다.");
+            }
+        }
     }
 
     Log(L"다른 방식의 DLSS 5가 이미 걸려 있는지 확인하고 있습니다... (리세이드는 그대로 둡니다)");
@@ -3381,6 +3786,13 @@ static DWORD WINAPI WorkThread(LPVOID param) {
     // DLSS 가 없는 게임은 Feeder 가 NGX 호출을 만들고 RenoDX 애드온이 신경망 패스를 건다.
     // 이 경로에서는 OptiScaler 를 넣지 않는다. D3D12 브리지가 둘이 되어 힙이 깨진다.
     if (modeB) {
+        // 2026-10-23. 이 길은 리세이드가 본체다. 애드온이 리세이드 위에서 돌기 때문에
+        // 빼면 아무것도 동작하지 않는다. 그래서 창에서 끄셨어도 넣는다.
+        // 다만 말없이 넣지는 않는다. 끈 것을 무시했으면 그렇게 적어야 한다.
+        if (SendMessageW(g_hRs, BM_GETCHECK, 0, 0) != BST_CHECKED) {
+            Log(L"리세이드를 끄셨지만 이 게임은 리세이드 위에서만 동작합니다. 그래서 같이 넣습니다.");
+            Log(L"  이 게임에는 DLSS 가 없어 리세이드 애드온으로 신경망을 겁니다.");
+        }
         Status(L"DLSS5-Feeder 를 넣는 중입니다...");
         if (!InstallFeeder(gameDir, added)) {
             Log(L"───── 설치를 마치지 못했습니다");
@@ -3542,7 +3954,55 @@ static DWORD WINAPI WorkThread(LPVOID param) {
         Log(L"[경고] OptiScaler.dll 이 없습니다. 배포 파일 구성이 바뀐 것 같습니다.");
     }
 
-    Log(L"DLSS 5를 켜는 설정만 넣고 있습니다. 화질 값은 제작자 기본값 그대로 둡니다.");
+    // 2026-10-23 바이오하자드 RE4 에서 드러났다.
+    // exe 는 DLSS 를 제대로 쓰는데(via.render.DLSSUpscalingInterface, isDLSSAvailable)
+    // 스팀판에 런타임 DLL 이 안 들어 있다. 그러면 OptiScaler 가
+    //   "nvngx_dlss.dll not found, disabling DLSS"
+    // 하고 업스케일러를 스스로 꺼서, 올라와도 할 일이 없어 창조차 안 열린다.
+    // 리세이드 길에서만 넣던 파일을 이쪽에도 넣는다.
+    {
+        std::wstring dlssDst = gameDir + L"\\" + DLSS_DLL;
+        // 게임이 다른 폴더에 자기 런타임을 두는 경우가 있다.
+        //   킹덤컴2  실행 파일은 Bin\Win64MasterMasterSteamPGO
+        //            런타임은  Bin\Win64Shared\nvngx_dlss.dll (48,971,808)
+        // 그럴 때 실행 파일 옆에 우리 것을 하나 더 놓으면, 윈도우가 이름으로 찾을 때
+        // 실행 파일 폴더를 먼저 보므로 게임이 고른 판본 대신 우리 것이 올라간다.
+        // 부탁하지도 않은 교체가 된다. 게임 폴더 어디에도 없을 때만 넣는다.
+        // 2026-10-23. 넣기 전에 대표님이 짚어 주셨다.
+        std::wstring elsewhereRt;
+        bool gameHasItSomewhere = FindFileDeep(job->dir, DLSS_DLL, 4, elsewhereRt)
+                                  && !IsOurDlssRuntime(elsewhereRt);
+        if (FileExists(dlssDst)) {
+            Log(L"  DLSS 런타임은 이미 있어 건드리지 않습니다.");
+        } else if (gameHasItSomewhere) {
+            Log(L"  DLSS 런타임이 게임의 다른 폴더에 있어 넣지 않습니다.");
+            Log(L"    " + elsewhereRt);
+        } else {
+            std::wstring dlssSrc = SelfDir() + L"\\" + DATA_DIR + L"\\" + FEED_DIR + L"\\" + DLSS_DLL;
+            if (!FileExists(dlssSrc)) {
+                Log(L"  [경고] 같이 들어 있어야 할 nvngx_dlss.dll 을 찾지 못했습니다.");
+            } else {
+                Status(L"DLSS 런타임을 넣는 중입니다...");
+                std::wstring tmpDst = dlssDst + L".part";
+                DeleteFileW(tmpDst.c_str());
+                long long want = FileSizeOf(dlssSrc);
+                bool ok = CopyFileW(dlssSrc.c_str(), tmpDst.c_str(), FALSE) != 0;
+                if (ok && want > 0 && FileSizeOf(tmpDst) != want) { ok = false; }
+                if (ok) { ok = MoveFileW(tmpDst.c_str(), dlssDst.c_str()) != 0; }
+                if (ok) {
+                    added.push_back(DLSS_DLL);
+                    Log(L"  이 게임에는 DLSS 런타임이 없어 같이 넣었습니다. (nvngx_dlss.dll)");
+                } else {
+                    DeleteFileW(tmpDst.c_str());
+                    wchar_t eb[200];
+                    swprintf_s(eb, L"  [경고] DLSS 런타임을 넣지 못했습니다 (윈도우 오류 %lu)", GetLastError());
+                    Log(eb);
+                }
+            }
+        }
+    }
+
+    Log(L"DLSS 5 설정과 화질 기본값(Natural, 1패스)을 넣고 있습니다.");
     ApplyPreset(gameDir + L"\\OptiScaler.ini");
 
     SetupStreamlineForFg(gameDir, added);
@@ -3569,6 +4029,10 @@ static DWORD WINAPI WorkThread(LPVOID param) {
                 Log(b);
             }
         }
+        // 2026-10-23 레데리2. 매니저가 들고 있는 리세이드라도 ReShade.ini 는 게임 폴더에 있다.
+        // 캐시 자리를 안 잡아 주면 이 게임만 계속 임시 폴더에 쌓인다.
+        // 창 여는 키도 남의 ini 에 맞춰 넣고 있으니 같은 범위다.
+        SetReShadeCachePath(gameDir + L"\\" + RS_INI);
     } else if (SendMessageW(g_hRs, BM_GETCHECK, 0, 0) == BST_CHECKED) {
         Log(L"리세이드도 같이 넣습니다. (나중에 직접 넣으려 하면 이름이 겹쳐 막힙니다)");
         InstallReShadeBeside(gameDir, proxy, added);
@@ -3706,9 +4170,16 @@ static DWORD WINAPI WorkThread(LPVOID param) {
         Log(L"  4. Insert 키로 조절 창을 열고 맨 아래 DLSS Neural Rendering 항목을 펼치세요.");
         Log(L"  5. F7 키로 껐다 켜며 비교해 보세요. 얼굴 클로즈업에서 차이가 가장 잘 보입니다.");
         Log(L"");
-        Log(L"※ 리세이드도 같이 넣었습니다. 숫자 8 키로 열립니다. (DLSS 5 창은 Insert 입니다)");
-        Log(L"   8 을 눌러도 창이 안 뜨면 [DLSS 5 설치]를 한 번 더 누르세요.");
-        Log(L"   게임마다 읽어 들이는 파일 이름이 달라서, 다른 이름으로 바꿔 넣습니다.");
+        // 2026-10-23 레데리2. 리세이드 매니저가 이 게임을 들고 있으면 우리 것을 안 넣는데,
+        // 안내는 넣었다고 적고 있었다. 안 한 일을 했다고 적으면 안 된다.
+        if (ReShadeManagerHasGame(gameDir)) {
+            Log(L"※ 리세이드는 리세이드 매니저가 이미 들고 있어 우리 것을 넣지 않았습니다.");
+            Log(L"   창 여는 키는 매니저에서 정하신 그대로입니다.");
+        } else {
+            Log(L"※ 리세이드도 같이 넣었습니다. 숫자 8 키로 열립니다. (DLSS 5 창은 Insert 입니다)");
+            Log(L"   8 을 눌러도 창이 안 뜨면 [DLSS 5 설치]를 한 번 더 누르세요.");
+            Log(L"   게임마다 읽어 들이는 파일 이름이 달라서, 다른 이름으로 바꿔 넣습니다.");
+        }
         Log(L"※ 프레임이 모자라면 Insert 창에서 Model resolution 을 0.7 로 내리세요.");
         // 스트림라인 폴더를 넣었다는 건 이 게임이 DLSS 프레임 생성을 할 줄 안다는 뜻이다.
         // 게임 설정에서 켜야 호출이 생기고, 그래야 옵티가 가로챌 것이 있다.
@@ -3723,6 +4194,13 @@ static DWORD WINAPI WorkThread(LPVOID param) {
     Log(L"※ 피부가 하얗게 뜨거나 반짝이면 Detail 과 Colour 를 내리세요.");
     Log(L"※ 설치 직후 첫 실행은 실패할 수 있습니다. 그냥 한 번 더 켜시면 됩니다.");
     Log(L"   엔비디아가 뒤에서 파일을 정리하느라 그런 것이라 고장이 아닙니다.");
+    // 2026-10-23. REFramework 을 꺼 둔 경우에는 끝 안내에도 적는다.
+    // 진행 기록은 잘 안 보시는데, 모드가 안 뜨면 우리 탓으로 돌아온다.
+    if (FileExists(gameDir + L"\\dinput8.dll.off")) {
+        Log(L"※ REFramework 을 잠시 꺼 두었습니다. (dinput8.dll → dinput8.dll.off)");
+        Log(L"   둘을 같이 올리면 게임을 시작하는 순간 꺼집니다. 제작자 쪽에도 같은 제보가 많습니다.");
+        Log(L"   REFramework 을 쓰셔야 하면 [되돌리기] 를 누르면 원래대로 돌아갑니다.");
+    }
     Log(L"※ 게임이 안 켜지거나 이상하면 [되돌리기]를 누르면 설치 전으로 돌아갑니다.");
     Log(L"");
     if (checkMiss == 0) {
@@ -3766,6 +4244,47 @@ static std::wstring PickFolder(HWND owner) {
     return path;
 }
 
+// 고른 게임에 맞춰 "리세이드도 같이 설치" 칸을 손본다. (2026-10-23)
+//
+// DLSS 가 없는 게임은 리세이드 애드온 위에서 신경망이 돈다. 리세이드가 본체라
+// 그 칸을 끄면 아무것도 동작하지 않는 설치가 된다. 전에는 끄셨어도 말없이 넣었는데,
+// 끌 수 있게 보여 주고 무시하는 것보다 처음부터 못 끄게 하는 편이 정직하다.
+//
+// 판별은 설치할 때와 똑같은 GameSupportsDlssFor 를 쓴다. 두 군데서 다르게 판단하면
+// 창에 보이는 것과 실제로 하는 일이 어긋난다. 다만 고를 때마다 진행 기록이
+// 쌓이면 안 되므로 그 동안만 기록을 잠근다.
+static void UpdateReShadeCheckbox(const std::wstring& gameRoot) {
+    if (!g_hRs) { return; }
+    bool mustHave = false;
+    if (!gameRoot.empty()) {
+        std::wstring exe = FindGameExe(ResolveExeDir(gameRoot));
+        if (!exe.empty()) {
+            g_logMuted = true;
+            int sup = GameSupportsDlssFor(exe);
+            g_logMuted = false;
+            mustHave = (sup == 0);
+        }
+    }
+    if (mustHave) {
+        SendMessageW(g_hRs, BM_SETCHECK, BST_CHECKED, 0);
+        EnableWindow(g_hRs, FALSE);
+        SetWindowTextW(g_hRs, L"리세이드도 같이 설치 (이 게임은 리세이드가 있어야 동작합니다)");
+    } else {
+        EnableWindow(g_hRs, TRUE);
+        SetWindowTextW(g_hRs, L"리세이드도 같이 설치 (끄면 DLSS 5 만 넣습니다)");
+    }
+}
+
+// 목록에서 지금 고른 게임으로 위 칸을 맞춘다.
+static void SyncReShadeCheckboxToSelection() {
+    int sel = (int)SendMessageW(g_hList, LB_GETCURSEL, 0, 0);
+    if (sel < 0 || sel >= (int)g_games.size()) {
+        UpdateReShadeCheckbox(L"");
+        return;
+    }
+    UpdateReShadeCheckbox(g_games[sel].dir);
+}
+
 // 목록에 없는 게임을 사용자가 직접 골라 넣는다.
 // 스팀 말고 GOG·에픽·엑스박스 같은 데 깔린 게임을 이 길로 받는다.
 // 고르는 것은 게임 루트 폴더다. 실행 파일이 몇 단계 아래에 있든 FindGameExe 가 찾는다.
@@ -3780,6 +4299,7 @@ static void PickGameFolder() {
     for (size_t i = 0; i < g_games.size(); i++) {
         if (LowerW(g_games[i].dir) == LowerW(dir)) {
             SendMessageW(g_hList, LB_SETCURSEL, i, 0);
+            SyncReShadeCheckboxToSelection();
             AddLogLine(L"  이미 목록에 있는 게임입니다.");
             SetWindowTextW(g_hStatus, L"이미 목록에 있는 게임입니다.");
             return;
@@ -3801,6 +4321,7 @@ static void PickGameFolder() {
     g_games.push_back(g);
     int idx = (int)SendMessageW(g_hList, LB_ADDSTRING, 0, (LPARAM)g.name.c_str());
     SendMessageW(g_hList, LB_SETCURSEL, idx, 0);
+    SyncReShadeCheckboxToSelection();
 
     AddLogLine((L"직접 고른 게임: " + name).c_str());
     AddLogLine((L"  폴더: " + dir).c_str());
@@ -4001,6 +4522,10 @@ static void LayoutControls(int w, int h) {
 static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_COMMAND:
+        if ((HWND)lp == g_hList && HIWORD(wp) == LBN_SELCHANGE) {
+            SyncReShadeCheckboxToSelection();
+            return 0;
+        }
         if ((HWND)lp == g_hInstall)      StartJob(false);
         else if ((HWND)lp == g_hRestore) StartJob(true);
         else if ((HWND)lp == g_hCopy)    CopyLogToClipboard();
@@ -4222,6 +4747,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
         SendMessageW(g_hList, LB_ADDSTRING, 0, (LPARAM)g_games[i].name.c_str());
     wchar_t b[128]; swprintf_s(b, L"게임 %d개를 찾았습니다. 목록에 없으면 [폴더에서 고르기] 를 쓰세요.", (int)g_games.size());
     AddLogLine(b);
+    SyncReShadeCheckboxToSelection();
 
     MSG msg;
     while (GetMessageW(&msg, NULL, 0, 0) > 0) {
