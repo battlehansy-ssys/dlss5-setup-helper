@@ -18,7 +18,7 @@
 
 // ================================================================ 설정
 // 버전 규칙: 아래 OPTI_URL(내려받기 주소)을 바꿀 때마다 맨 뒷자리를 1 올린다.
-static const wchar_t* APP_VER  = L"1.0.3.2";
+static const wchar_t* APP_VER  = L"1.0.3.3";
 static const wchar_t* OPTI_VER = L"F5-DLSSNR v0.1.33";
 // 이 판을 만들 때 전수조사에 쓴 드라이버. 창 위에 같이 적어서
 // 받으신 분이 자기 것과 바로 견줄 수 있게 한다.
@@ -48,6 +48,10 @@ static const wchar_t* NR_DLL      = L"nvngx_dlssnr.dll";
 // 카드 세대별 신경망 파일. 프로그램 옆에 이 이름으로 같이 넣어 배포한다.
 // 신경망 파일은 하나만 쓴다. 두 판을 시험한 결과 이 판이 모든 경우에 동작했다.
 static const wchar_t* LOG_FILE    = L"DLSS5_log.txt";
+// 창에 보여 주는 진행 기록의 한도. 파일에는 전부 남으므로 창만 제한한다.
+// EDIT 컨트롤은 한도를 안 정하면 32,767자에서 막혀 그 뒤가 안 찍힌다.
+static const int LOG_UI_MAX  = 1000000;   // 창에 담을 최대 글자수
+static const int LOG_UI_TRIM = 200000;    // 넘치면 앞에서 이만큼 잘라낸다
 
 // 설치할 때 ini에 써 넣는 값
 struct IniSet { const wchar_t* section; const wchar_t* key; const wchar_t* value; };
@@ -242,8 +246,54 @@ static std::wstring NowStamp() {
     return b;
 }
 
+// 하위 폴더까지 만든다. 백업 자리를 게임 폴더와 같은 모양으로 맞추는 데 쓴다.
+static void MakeDirs(const std::wstring& dir) {
+    for (size_t i = 3; i < dir.size(); i++) {
+        if (dir[i] == L'\\') {
+            CreateDirectoryW(dir.substr(0, i).c_str(), NULL);
+        }
+    }
+    CreateDirectoryW(dir.c_str(), NULL);
+}
+// 두 파일의 내용이 같은지. 크기가 다르면 바로 아니다.
+static bool SameFileContent(const std::wstring& a, const std::wstring& b) {
+    HANDLE ha = CreateFileW(a.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL,
+                            OPEN_EXISTING, 0, NULL);
+    if (ha == INVALID_HANDLE_VALUE) { return false; }
+    HANDLE hb = CreateFileW(b.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL,
+                            OPEN_EXISTING, 0, NULL);
+    if (hb == INVALID_HANDLE_VALUE) { CloseHandle(ha); return false; }
+    LARGE_INTEGER sa, sb;
+    bool same = GetFileSizeEx(ha, &sa) && GetFileSizeEx(hb, &sb)
+             && sa.QuadPart == sb.QuadPart;
+    while (same) {
+        char ba[65536], bb[65536];
+        DWORD ra = 0, rb = 0;
+        if (!ReadFile(ha, ba, sizeof(ba), &ra, NULL)) { same = false; break; }
+        if (!ReadFile(hb, bb, sizeof(bb), &rb, NULL)) { same = false; break; }
+        if (ra != rb) { same = false; break; }
+        if (ra == 0) { break; }
+        if (memcmp(ba, bb, ra) != 0) { same = false; break; }
+    }
+    CloseHandle(ha); CloseHandle(hb);
+    return same;
+}
+
+// bakRoot 를 넘기면, 덮어쓸 자리에 있던 파일을 먼저 그 폴더로 옮긴다.
+//
+// 2026-10-25. 전에는 백업을 이름 세 개(OptiScaler.ini, nvngx_dlss.dll, 프록시)
+// 에만 떴다. 그런데 여기서 게임 폴더에 91개를 쏟아붓는다. 그 안에는
+// README.md · LICENSE · SHA256SUMS.txt · docs 폴더 · redist 폴더처럼
+// 게임도 가지고 있을 법한 이름이 있다. 겹치면 백업 없이 덮였고,
+// 설치 기록에는 적혔다. 되돌리기는 백업이 없으면 우리가 만든 것으로 보고
+// 지우므로, 게임 파일이 영영 사라진다.
+// 대표님 PC 열세 게임에서는 안 겹쳤지만, 수백 개 게임에 깔리면 반드시 나온다.
+//
+// 되돌리기 쪽은 고칠 것이 없다. 이미 backup\<같은 상대 경로> 를 찾아
+// 되살린다. 여기서 같은 모양으로 넣어 주기만 하면 된다.
 static void CopyTree(const std::wstring& from, const std::wstring& to,
-                     std::vector<std::wstring>& added, const std::wstring& rel = L"") {
+                     std::vector<std::wstring>& added, const std::wstring& rel = L"",
+                     const std::wstring& bakRoot = L"") {
     CreateDirectoryW(to.c_str(), NULL);
     WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileW((from + L"\\*").c_str(), &fd);
     if (h == INVALID_HANDLE_VALUE) return;
@@ -252,8 +302,24 @@ static void CopyTree(const std::wstring& from, const std::wstring& to,
         if (n == L"." || n == L"..") continue;
         std::wstring src = from + L"\\" + n, dst = to + L"\\" + n;
         std::wstring r = rel.empty() ? n : rel + L"\\" + n;
-        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) CopyTree(src, dst, added, r);
-        else { if (CopyFileW(src.c_str(), dst.c_str(), FALSE)) added.push_back(r); }
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            CopyTree(src, dst, added, r, bakRoot);
+        } else {
+            if (!bakRoot.empty() && FileExists(dst)) {
+                std::wstring bak = bakRoot + L"\\" + r;
+                // 이미 백업돼 있으면 그대로 둔다. 첫 백업이 진짜 원본이다.
+                // 지금 넣으려는 것과 똑같은 파일이면 보관할 것이 없다.
+                // (되돌리기 없이 두 번 설치하신 경우. 우리가 지난번에 넣은 것이다)
+                if (!FileExists(bak) && !SameFileContent(dst, src)) {
+                    MakeDirs(bak.substr(0, bak.rfind(L'\\')));
+                    if (!CopyFileW(dst.c_str(), bak.c_str(), TRUE)) {
+                        // 백업을 못 떴으면 덮지 않는다. 되돌릴 수 없는 것을 만들지 않는다.
+                        continue;
+                    }
+                }
+            }
+            if (CopyFileW(src.c_str(), dst.c_str(), FALSE)) { added.push_back(r); }
+        }
     } while (FindNextFileW(h, &fd));
     FindClose(h);
 }
@@ -646,7 +712,11 @@ static const NeedFile NEEDED[] = {
     { L"data\\feeder\\ReShadePreset.ini",            190, L"리세이드 프리셋",      NULL },
     { L"data\\reshade\\ReShade64.dll",           5592064, L"리세이드",             NULL },
     { L"data\\reshade\\ReShade.ini",                 316, L"리세이드 설정",        NULL },
-    { L"data\\reshade\\look_values.ini",            1351, L"기본 효과 값",        NULL },
+    // look_values.ini 는 일부러 넣지 않는다. 이 표는 크기가 한 바이트만 달라도
+    // "압축을 다시 푸세요" 창을 띄운다. 그런데 그 파일은 **고치시라고 넣은 파일**이다.
+    // 사용자가 그레인 값을 0.05 로 바꾸는 순간 크기가 달라져 그 창이 뜬다.
+    // 한글판과 영문판은 주석이 달라 길이도 애초에 같을 수 없다.
+    // 파일이 없거나 깨져 있으면 효과는 켜지되 셰이더 기본값으로 돈다 (2892줄 참고).
 };
 
 // 빠지거나 크기가 다른 항목 수를 돌려준다.
@@ -3458,11 +3528,17 @@ static bool InstallReShadeBeside(const std::wstring& gameDir, const std::wstring
         Status(L"효과 파일을 넣는 중입니다...");
         std::vector<std::wstring> got;
         CopyTree(rsSrc + L"\\" + RS_SHADERS, shDst, got);
-        // 폴더째로 적지 않고 넣은 파일만 하나씩 적는다.
-        // 폴더로 적으면 되돌리기가 통째로 지워서, 사용자가 나중에 넣은
-        // 셰이더나 프리셋까지 같이 날아간다.
-        for (size_t i = 0; i < got.size(); i++)
-            added.push_back(std::wstring(RS_SHADERS) + L"\\" + got[i]);
+        // 효과 파일은 설치 기록에 적지 않는다. 적으면 되돌리기가 886개를 지운다.
+        //
+        // 2026-10-25. 캐시를 게임 폴더에 두도록 고치면서 되돌리기가 캐시를
+        // 안 지우게만 했는데, 효과 파일은 그대로 지워지고 있었다. 캐시는
+        // 효과 파일을 보고 구운 것이라 효과가 새 파일이 되면 쓸모가 없어진다.
+        // 라오어 1에서 되돌리기 뒤 다시 깔았더니 564개를 다시 구웠다.
+        // 캐시만 남기는 것은 반쪽이었다.
+        //
+        // 이 폴더는 어느 리세이드가 떠도 같이 쓰는 공용 폴더이기도 하다.
+        // 지우면 매니저로 깐 분의 리세이드가 "이펙트 파일을 찾을 수 없습니다" 를 띄운다.
+        // (2026-10-18 레데리2) 그래서 애초에 지우면 안 되는 폴더였다.
         wchar_t b[160];
         swprintf_s(b, L"  reshade-shaders 를 넣었습니다. (파일 %d개)", (int)got.size());
         Log(b);
@@ -3499,65 +3575,21 @@ static bool InstallFeeder(const std::wstring& gameDir, std::vector<std::wstring>
             Log(L"       압축을 푸신 폴더에서 실행해 주세요. 지금 위치: " + SelfDir());
             return false;
         }
-        // 어느 이름으로 넣을지 고른다.
-        //
-        // 2026-10-24 톰레이더(2013)에서 걸렸다. 전에는 dxgi.dll 로 박혀 있었다.
-        // 그 게임은 D3D11CreateDeviceAndSwapChain 으로 장치를 만들어서
-        // dxgi.dll 을 직접 부르지 않는다. 파일은 들어갔는데 한 번도 안 올라왔다.
-        // ReShade.log 조차 안 생겼다.
-        //
-        // 게임이 DX11 로 그리면 d3d11.dll 은 반드시 올라온다. DX12 면 d3d12.dll 이
-        // 반드시 올라온다. dxgi 보다 확실하다. 이 길에는 DLSS 5 가 따로 없어서
-        // 누가 DXGI 팩토리를 먼저 쥐느냐를 다툴 일도 없다.
-        std::wstring exeR = FindGameExe(gameDir);
-        std::wstring lowdirR = LowerW(gameDir);
-        bool dx12R = false;
-        if (lowdirR.find(L"dx12") != std::wstring::npos
-         || lowdirR.find(L"d3d12") != std::wstring::npos) {
-            dx12R = true;
-        }
-        if (!dx12R && !exeR.empty() && ExeHasString(exeR, "d3d12.dll")) {
-            dx12R = true;
-        }
-        if (!dx12R) {
-            WIN32_FIND_DATAW fdR;
-            HANDLE hfR = FindFirstFileW((gameDir + L"\\*d3d12*").c_str(), &fdR);
-            if (hfR != INVALID_HANDLE_VALUE) { FindClose(hfR); dx12R = true; }
-        }
-        std::vector<std::wstring> rsOrder;
-        if (dx12R) {
-            rsOrder.push_back(L"d3d12.dll");
-            rsOrder.push_back(L"d3d11.dll");
-        } else {
-            rsOrder.push_back(L"d3d11.dll");
-            rsOrder.push_back(L"d3d12.dll");
-        }
-        rsOrder.push_back(L"dxgi.dll");
-        rsOrder.push_back(L"opengl32.dll");
-
-        std::wstring pick;
-        for (size_t i = 0; i < rsOrder.size(); i++) {
-            if (!FileExists(gameDir + L"\\" + rsOrder[i])) { pick = rsOrder[i]; break; }
-        }
-        if (pick.empty()) {
-            Log(L"[실패] 리세이드를 넣을 빈 이름이 없습니다.");
-            Log(L"       d3d11 · d3d12 · dxgi · opengl32 가 모두 차 있습니다.");
+        std::wstring dst = gameDir + L"\\dxgi.dll";
+        if (FileExists(dst)) {
+            Log(L"[실패] dxgi.dll 이 이미 있는데 ReShade 가 아닙니다.");
+            Log(L"       다른 프로그램이 쓰고 있어 덮어쓰면 그쪽이 망가집니다. 여기서 멈춥니다.");
             return false;
         }
-        std::wstring dst = gameDir + L"\\" + pick;
         if (!CopyFileW((rsSrc + L"\\" + RS_DLL).c_str(), dst.c_str(), TRUE)) {
             wchar_t eb[200];
             swprintf_s(eb, L"[실패] ReShade 를 넣지 못했습니다 (윈도우 오류 %lu)", GetLastError());
             Log(eb);
             return false;
         }
-        added.push_back(pick);
+        added.push_back(L"dxgi.dll");
         rs = dst;
-        {
-            wchar_t pb[160];
-            swprintf_s(pb, L"  ReShade 를 %s 로 넣었습니다.", pick.c_str());
-            Log(pb);
-        }
+        Log(L"  ReShade 를 dxgi.dll 로 넣었습니다.");
 
         std::wstring iniDst = gameDir + L"\\" + RS_INI;
         if (FileExists(iniDst)) {
@@ -3578,9 +3610,7 @@ static bool InstallFeeder(const std::wstring& gameDir, std::vector<std::wstring>
             Status(L"효과 파일을 넣는 중입니다...");
             std::vector<std::wstring> got;
             CopyTree(rsSrc + L"\\" + RS_SHADERS, shDst, got);
-            // 폴더째로 적지 않고 넣은 파일만 하나씩 적는다. (위 InstallReShadeBeside 와 같은 이유)
-            for (size_t i = 0; i < got.size(); i++)
-                added.push_back(std::wstring(RS_SHADERS) + L"\\" + got[i]);
+            // 설치 기록에 적지 않는다. 까닭은 위 InstallReShadeBeside 와 같다. (2026-10-25)
             wchar_t b[160];
             swprintf_s(b, L"  reshade-shaders 를 넣었습니다. (파일 %d개)", (int)got.size());
             Log(b);
@@ -4318,7 +4348,8 @@ static DWORD WINAPI WorkThread(LPVOID param) {
     }
     Log(L"게임 폴더에 파일을 넣고 있습니다...");
     Status(L"게임 폴더에 파일을 넣는 중입니다...");
-    CopyTree(srcRoot, gameDir, added);
+    // backup 을 넘기면, 덮어쓸 자리에 있던 게임 파일을 먼저 그리로 옮긴다.
+    CopyTree(srcRoot, gameDir, added, L"", backup);
     wchar_t cntMsg[128]; swprintf_s(cntMsg, L"  → 파일 %d개를 넣었습니다.", (int)added.size());
     Log(cntMsg);
 
@@ -4408,8 +4439,7 @@ static DWORD WINAPI WorkThread(LPVOID param) {
             if (!HasFxFiles(shDst, 3) && DirExists(shSrc)) {
                 std::vector<std::wstring> got;
                 CopyTree(shSrc, shDst, got);
-                for (size_t i = 0; i < got.size(); i++)
-                    added.push_back(std::wstring(RS_SHADERS) + L"\\" + got[i]);
+                // 설치 기록에 적지 않는다. 까닭은 위 InstallReShadeBeside 와 같다. (2026-10-25)
                 wchar_t b[160];
                 swprintf_s(b, L"  효과 파일은 넣어 드립니다. (파일 %d개)", (int)got.size());
                 Log(b);
@@ -4609,6 +4639,20 @@ static DWORD WINAPI WorkThread(LPVOID param) {
 static void AddLogLine(const wchar_t* s) {
     std::wstring line = L"[" + NowStamp() + L"] " + s + L"\r\n";
     int len = GetWindowTextLengthW(g_hLog);
+
+    // 창이 다 차면 앞쪽을 잘라낸다. 한도에 닿으면 뒤가 안 들어가고 멈춘다.
+    // 자를 때는 줄 가운데가 아니라 줄 끝에서 자른다. (2026-10-25)
+    if (len > LOG_UI_MAX - LOG_UI_TRIM) {
+        int keepFrom = LOG_UI_TRIM;
+        std::vector<wchar_t> buf((size_t)len + 1);
+        GetWindowTextW(g_hLog, &buf[0], len + 1);
+        std::wstring all(&buf[0]);
+        size_t nl = all.find(L"\r\n", (size_t)keepFrom);
+        all = (nl == std::wstring::npos) ? std::wstring() : all.substr(nl + 2);
+        SetWindowTextW(g_hLog, all.c_str());
+        len = GetWindowTextLengthW(g_hLog);
+    }
+
     SendMessageW(g_hLog, EM_SETSEL, len, len);
     SendMessageW(g_hLog, EM_REPLACESEL, FALSE, (LPARAM)line.c_str());
     SendMessageW(g_hLog, EM_SCROLLCARET, 0, 0);
@@ -5033,6 +5077,10 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
         WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL,
         20, 428, 820, 232, g_hWnd, NULL, hInst, NULL);
     SendMessageW(g_hLog, WM_SETFONT, (WPARAM)g_font, TRUE);
+    // EDIT 컨트롤은 한도를 안 정하면 32,767자에서 막힌다. 거기까지 차면
+    // 그 뒤로는 한 글자도 안 들어간다. 앞이 밀려 나가는 게 아니라 뒤가 막힌다.
+    // 게임을 여러 개 설치하면 그 한도에 닿는다. 2026-10-25 대표님이 찾으셨다.
+    SendMessageW(g_hLog, EM_SETLIMITTEXT, (WPARAM)LOG_UI_MAX, 0);
 
     {
         RECT rc; GetClientRect(g_hWnd, &rc);
