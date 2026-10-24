@@ -534,13 +534,11 @@ DLSS 1.0 게임인데 사용자가 계속하기를 골랐습니다.|||DLSS 1.0 g
   DLSS 5 신경망 파일은 615.00 이상을 요구합니다.|||  The DLSS 5 neural file requires 615.00 or newer.
   낮은 드라이버에서는 게임에 따라 켜자마자 꺼질 수 있습니다.|||  On older drivers some games close right after starting.
   엔비디아 앱에서 드라이버를 올리신 뒤 쓰시는 것이 좋습니다.|||  Update the driver in the NVIDIA app before using this.
-
 콜 오브 듀티|||Call of Duty
 콜 오브 듀티 워존|||Call of Duty Warzone
   신경망 기본값을 맞췄습니다 (Natural, 1패스).|||  Set the neural rendering defaults (Natural, 1 pass).
   NR Style 이 2 로 되어 있어 1 로 되돌렸습니다. (2 는 다음 실행 때 게임이 안 켜집니다)|||  NR Style was 2; set it back to 1. (With 2 the game does not start next time)
  를 내려받고 있습니다. 약 145MB, 인터넷 속도에 따라 몇 분 걸립니다.||| is downloading. About 145MB; this can take a few minutes depending on your connection.
-
   없던 항목을 붙였습니다: |||  Added a missing entry: 
   설정 %d개를 적용했습니다. (새로 붙인 것 %d개)|||  Applied %d settings. (%d newly added)
   - dinput8.dll.off 를 되돌리지 못했습니다|||  - could not restore dinput8.dll.off
@@ -574,3 +572,27 @@ DLSS 5 설정과 화질 기본값(Natural, 1패스)을 넣고 있습니다.|||Ap
    둘을 같이 올리면 게임을 시작하는 순간 꺼집니다. 제작자 쪽에도 같은 제보가 많습니다.|||   With both loaded the game closes the moment you start it. The author's page has many of the same reports.
    REFramework 을 쓰셔야 하면 [되돌리기] 를 누르면 원래대로 돌아갑니다.|||   If you need REFramework, press [Restore] and it goes back.
 리세이드도 같이 설치 (이 게임은 리세이드가 있어야 동작합니다)|||Install ReShade as well (this game needs ReShade to work)
+      (이 판은 드라이버 %s 에서 시험했습니다)|||      (this build was tested on driver %s)
+  우리가 넣은 파일이라 백업하지 않습니다: |||  This is a file we installed, so it is not backed up: 
+  백업본이 우리가 넣은 파일입니다. 돌려놓지 않고 그 백업본도 치욵니다.|||  The backup is a file we installed. It is not restored; that backup is removed too.
+  보이는 효과 두 개도 켰습니다: AdaptiveSharpen, FilmGrain2|||  Two visible effects are on as well: AdaptiveSharpen, FilmGrain2
+  보이는 효과를 켰습니다: AdaptiveSharpen, FilmGrain2|||  Visible effects are on: AdaptiveSharpen, FilmGrain2
+     숫자 8 로 창을 열고 F9 로 꽃다 켰면 차이가 보입니다.|||     Press 8 to open the panel and F9 to toggle them and see the difference.
+  백업본이 우리가 넣은 파일입니다. 돌려놓지 않고 그 백업본도 치웁니다.|||  The backup is a file we installed. It is not restored; that backup is removed too.
+     숫자 8 로 창을 열고 F9 로 껐다 켜면 차이가 보입니다.|||     Press 8 to open the panel and F9 to toggle them to see the difference.
+  엔비디아 스트림라인을 쓰는 게임입니다. dxgi.dll 로 넣습니다.|||  This game uses NVIDIA Streamline. Installing as dxgi.dll.
+  이 PC 에서 dxgi.dll 자리가 막힌 기록이 있어 winmm.dll 로 넣습니다.|||  This PC has a record of the dxgi.dll slot being blocked, so winmm.dll is used.
+  ReShadePreset.ini 에 쓰시던 효과가 있어 건드리지 않습니다.|||  ReShadePreset.ini already has effects you set up, so it is left alone.
+  ReShadePreset.ini 에 쓰시던 효과가 있어 보이는 효과는 건드리지 않습니다.|||  ReShadePreset.ini already has effects you set up, so the visible effects are left alone.
+기본 효과 값|||Default effect values
+       d3d11 · d3d12 · dxgi · opengl32 가 모두 차 있습니다.|||       d3d11, d3d12, dxgi and opengl32 are all taken.
+  ReShade 를 %s 로 넣었습니다.|||  ReShade was installed as %s.
+[실패] 리세이드를 넣을 빈 이름이 없습니다.|||[FAILED] There is no free name left to install ReShade under.
+DLSS5-Feeder 32비트|||DLSS5-Feeder 32-bit
+리세이드 32비트|||ReShade 32-bit
+32비트 게임이라 RenoDX 애드온은 넣지 않습니다. 보조 프로그램이 신경망을 돌립니다.|||This is a 32-bit game, so the RenoDX add-on is not installed. The helper process runs the neural model.
+  → 32비트 게임입니다. OptiScaler 는 64비트 전용이라 리세이드 방식으로 갑니다.|||  This is a 32-bit game. OptiScaler is 64-bit only, so the ReShade route is used.
+[중단] 이 게임은 32비트입니다. 아무것도 넣지 않았습니다.|||[STOPPED] This game is 32-bit. Nothing was installed.
+       DLSS 5 는 64비트 게임에서만 켜집니다.|||          DLSS 5 only works in 64-bit games.
+이 게임은 32비트로 만들어졌습니다.|||This game was built as 32-bit.
+DLSS 5 는 64비트 게임에서만 켜지므로|||DLSS 5 only works in 64-bit games, so

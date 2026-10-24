@@ -18,8 +18,12 @@
 
 // ================================================================ 설정
 // 버전 규칙: 아래 OPTI_URL(내려받기 주소)을 바꿀 때마다 맨 뒷자리를 1 올린다.
-static const wchar_t* APP_VER  = L"1.0.3.1";
+static const wchar_t* APP_VER  = L"1.0.3.2";
 static const wchar_t* OPTI_VER = L"F5-DLSSNR v0.1.33";
+// 이 판을 만들 때 전수조사에 쓴 드라이버. 창 위에 같이 적어서
+// 받으신 분이 자기 것과 바로 견줄 수 있게 한다.
+// 드라이버가 달라서 생긴 일을 우리 탓으로 알고 제보하시는 경우가 잦다. (2026-10-24)
+static const wchar_t* TESTED_DRV = L"621.01";
 static const wchar_t* OPTI_URL =
     L"https://github.com/janblade/OptiScaler-F5-DLSSNR-Multipass/releases/download/v0.1.33/OptiScaler-DLSSNR-F5-0.1.33-with-dlss-fg.zip";
 static const wchar_t* SWAPPER_URL = L"https://github.com/rakanki911/DLSS5-Swapper";
@@ -388,58 +392,72 @@ static int PruneEmptyDirs(const std::wstring& dir) {
 }
 
 // 우리가 만든 ReShadePreset.ini 인가.
-// 켠 효과가 우리 둘(DH_UBER_MOTION_020, DLSS5_Feed) 뿐이고 다른 값이 없으면 우리 것이다.
-// 사용자가 쓰시던 프리셋에는 효과가 더 들어 있거나 값이 적혀 있다. 그런 건 건드리지 않는다.
+//
+// 켠 효과가 우리 것뿐이면 우리 프리셋이다. 되돌릴 때 통째로 지운다.
+// 사용자가 쓰시던 프리셋에는 다른 효과가 들어 있다. 그건 파일을 두고
+// 우리가 켠 것만 뺀다 (DisableFeedTechniques).
 // 2026-10-22 라오어 1에서 예전 판이 남긴 것을 발견해 넣었다.
-// DLSS 있는 게임에서는 저 두 효과가 하는 일 없이 프레임만 먹는다.
+//
+// 2026-10-24. 두 가지를 고쳤다.
+//   1) 켜 주는 효과에 AdaptiveSharpen 과 FilmGrain2 가 늘었다. 목록에 넣는다.
+//   2) "파일이 2048바이트보다 크면 사용자 것" 과 "값이 적혀 있으면 사용자 것"
+//      이라는 두 판단을 뺐다. 이제 우리도 값을 적어 넣고, 게임을 한 번 켜면
+//      리세이드가 TechniqueSorting 에 셰이더 이름 전부를 적는다. 16KB 가 넘는다.
+//      그 뒤로는 우리 프리셋도 영영 우리 것으로 안 보였다.
+//
+// 켠 효과(Techniques) 만 본다. TechniqueSorting 은 순서 목록이라 보지 않는다.
 static bool IsOurReShadePreset(const std::wstring& path) {
     std::string t = ReadFileBytes(path);
-    if (t.empty() || t.size() > 2048) {
+    if (t.empty()) {
+        return false;
+    }
+    const char* ours[] = { "DH_UBER_MOTION_020@dh_uber_motion.fx",
+                           "DLSS5_Feed@DLSS5_Feed.fx",
+                           "AdaptiveSharpen@AdaptiveSharpen.fx",
+                           "FilmGrain2@FilmGrain2.fx" };
+    // AdaptiveSharpen 과 FilmGrain2 는 흔히 쓰는 효과다. 그 둘만 켜 둔 프리셋은
+    // 우리 것일 수도 있고 원래 쓰시던 것일 수도 있어서 가릴 수가 없다.
+    // 우리가 만든 것이면 설치 기록에 적혀 있고 그 기록대로 지워진다.
+    // 여기서는 우리라는 표시가 분명할 때만 참이라고 한다. (2026-10-24)
+    bool marked = (t.find("DLSS5_Feed@DLSS5_Feed.fx") != std::string::npos)
+               || (t.find("DH_UBER_MOTION_020@dh_uber_motion.fx") != std::string::npos);
+    if (!marked) {
         return false;
     }
     size_t p = 0;
+    bool seen = false;
     while (p < t.size()) {
         size_t e = t.find('\n', p);
         std::string ln = t.substr(p, (e == std::string::npos ? t.size() : e) - p);
         p = (e == std::string::npos) ? t.size() : e + 1;
-        while (!ln.empty() && (ln.back() == '\r' || ln.back() == ' ')) {
-            ln.pop_back();
+        while (!ln.empty() && (ln[ln.size() - 1] == '\r' || ln[ln.size() - 1] == ' ')) {
+            ln.erase(ln.size() - 1);
         }
-        if (ln.empty() || ln[0] == '[' || ln[0] == ';') {
+        if (ln.compare(0, 11, "Techniques=") != 0) {
             continue;
         }
-        size_t eq = ln.find('=');
-        if (eq == std::string::npos) {
-            return false;
-        }
-        std::string key = ln.substr(0, eq);
-        std::string val = ln.substr(eq + 1);
-        if (key != "Techniques" && key != "TechniqueSorting") {
-            if (!val.empty()) {
-                return false;   // 사용자가 값을 넣어 둔 항목이 있다
-            }
-            continue;
-        }
-        // 켠 효과가 우리 둘 말고 또 있으면 사용자 것이다
-        std::string rest = val;
-        const char* ours[] = { "DH_UBER_MOTION_020@dh_uber_motion.fx",
-                               "DLSS5_Feed@DLSS5_Feed.fx" };
-        for (int k = 0; k < 2; k++) {
-            for (;;) {
-                size_t f = rest.find(ours[k]);
-                if (f == std::string::npos) {
-                    break;
+        seen = true;
+        std::string rest = ln.substr(11);
+        size_t q = 0;
+        while (q <= rest.size()) {
+            size_t c = rest.find(',', q);
+            std::string one = (c == std::string::npos) ? rest.substr(q) : rest.substr(q, c - q);
+            if (!one.empty()) {
+                bool mine = false;
+                for (int k = 0; k < 4; k++) {
+                    if (one == ours[k]) { mine = true; }
                 }
-                rest.erase(f, strlen(ours[k]));
+                if (!mine) {
+                    return false;
+                }
             }
-        }
-        for (size_t k = 0; k < rest.size(); k++) {
-            if (rest[k] != ',' && rest[k] != ' ') {
-                return false;
+            if (c == std::string::npos) {
+                break;
             }
+            q = c + 1;
         }
     }
-    return true;
+    return seen;
 }
 
 static bool IsOurDlssRuntime(const std::wstring& path);
@@ -628,6 +646,7 @@ static const NeedFile NEEDED[] = {
     { L"data\\feeder\\ReShadePreset.ini",            190, L"리세이드 프리셋",      NULL },
     { L"data\\reshade\\ReShade64.dll",           5592064, L"리세이드",             NULL },
     { L"data\\reshade\\ReShade.ini",                 316, L"리세이드 설정",        NULL },
+    { L"data\\reshade\\look_values.ini",            1351, L"기본 효과 값",        NULL },
 };
 
 // 빠지거나 크기가 다른 항목 수를 돌려준다.
@@ -707,11 +726,60 @@ static std::wstring ProductNameOf(const std::wstring& path) {
     if (!VerQueryValueW(buf.data(), sub, (LPVOID*)&val, &vlen) || !val) return L"";
     return LowerW(val);
 }
+// 32비트 실행 파일인가.
+//
+// 2026-10-24 톰레이더(2013)에서 하루를 썼다. 그 게임은 32비트인데 우리가
+// 64비트 ReShade64.dll 만 넣었다. 64비트 dll 은 32비트 프로세스에 들어갈 수
+// 없어서 윈도우가 그냥 안 읽는다. ReShade.log 조차 안 생긴다.
+// 그런데 기록에는 "설치 완료" 가 찍힌다. 조용히 아무 일도 안 일어난다.
+// 자리를 dxgi 에서 d3d11 로 바꿔 가며 두 번 헛짓했다. 자리 문제가 아니었다.
+//
+// PE 머리의 Machine 값 두 바이트만 보면 된다. 게임을 켜지 않아도 알 수 있다.
+//   0x8664 = x64,  0x014C = x86
+static bool ExeIs32Bit(const std::wstring& path) {
+    HANDLE h = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL,
+                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE) { return false; }
+    BYTE head[0x400];
+    DWORD got = 0;
+    BOOL ok = ReadFile(h, head, sizeof(head), &got, NULL);
+    CloseHandle(h);
+    if (!ok || got < 0x40) { return false; }
+    if (head[0] != 'M' || head[1] != 'Z') { return false; }
+    DWORD e = *(DWORD*)(head + 0x3C);
+    if (e + 6 > got) { return false; }
+    if (head[e] != 'P' || head[e + 1] != 'E') { return false; }
+    WORD machine = *(WORD*)(head + e + 4);
+    return machine == 0x014C;
+}
+
 static bool IsOptiScalerFile(const std::wstring& path) {
     return ProductNameOf(path).find(L"optiscaler") != std::wstring::npos;
 }
 static bool IsReShadeFile(const std::wstring& path) {
     return ProductNameOf(path).find(L"reshade") != std::wstring::npos;
+}
+
+// 백업하면 안 되는 파일인가. 우리가 먼저 넣어 둔 것이면 "게임의 원래 파일"이 아니다.
+//
+// 2026-10-24. @J_s_iny 님 스파이더맨 2 기록에서 찾았다. 이 게임은 원래
+// winmm.dll 이 없어서 첫 설치 때 백업할 것이 없었다. 백업 폴더에 winmm.dll 이
+// 안 생겼으니, 두 번째 설치 때는 "아직 백업 안 됐다"로 보고 우리가 넣어 둔
+// OptiScaler 를 게임의 원래 파일로 알고 백업했다 (25863680 바이트).
+//   [15:39:40]   백업함: winmm.dll
+//
+// 되돌리기 자체는 깨끗하게 끝난다. CheckRevertLeftovers 가 프록시 자리를
+// 다시 훑어서 아직 OptiScaler 면 지운다. 문제는 설치 중 자리를 옮길 때다.
+// 옛 winmm 을 지우고 백업본을 제자리에 돌려놓는데, 그 백업본이 OptiScaler 라
+// winmm 과 dxgi 에 두 개가 생긴다.
+//
+// OptiScaler.ini 는 가리지 않는다. 직접 OptiScaler 를 쓰시던 분의 설정이
+// 들어 있을 수 있어서, 우리 것일 때 한 번 더 백업되는 쪽이 덜 위험하다.
+static bool IsOurBackupCandidate(const std::wstring& path, const std::wstring& name) {
+    std::wstring n = LowerW(name);
+    if (n == L"optiscaler.ini") { return false; }
+    if (n == L"nvngx_dlss.dll") { return IsOurDlssRuntime(path); }
+    return IsOptiScalerFile(path) || IsReShadeFile(path);
 }
 
 // 파일 안에 이 ASCII 문자열이 있는지. 리세이드 애드온 지원 빌드 판별에 쓴다.
@@ -1642,126 +1710,6 @@ static bool IsDx9Only(const std::wstring& exe) {
     }
     return d3d9 && !modern;
 }
-// ── exe 가 이 dll 이름을 "가져오기 표"에 적어 두었는가.
-//
-// 2026-10-18 호라이즌 사고로 넣었다. 이름을 빌려 타는 자리는 두 종류다.
-//   표에 적힌 이름  → 게임이 켜지는 그 순간 같이 올라온다 (제일 먼저)
-//   안 적힌 이름    → 누군가 나중에 부를 때 올라온다 (늦다)
-// 스트림라인 게임에서 늦게 올라오면 sl.common.dll 이 이미 자리를 잡은 뒤라
-// OptiScaler 가 후킹에 실패하고 게임이 꺼진다. 호라이즌 로그에 그대로 찍힌다 —
-//   CheckWorkingMode sl.common.dll already in memory
-//   StreamlineHooks::hookDlss Failed to hook DLSS: 10DD
-// 그래서 스트림라인 게임에 dxgi.dll 을 줄지 말지를 이 표로 판단한다.
-// 파일 안에 글자가 있는지만 보면 안 된다. 안 부르는 게임의 exe 에도
-// "dxgi.dll" 글자는 흔히 들어 있다. 표를 직접 읽어야 한다.
-static bool EqNoCaseA(const char* a, const char* b) {
-    for (;; a++, b++) {
-        char x = *a, y = *b;
-        if (x >= 'A' && x <= 'Z') x = (char)(x - 'A' + 'a');
-        if (y >= 'A' && y <= 'Z') y = (char)(y - 'A' + 'a');
-        if (x != y) return false;
-        if (!x) return true;
-    }
-}
-
-// 표를 읽는 부분만 따로 뗐다. C++ 개체가 있는 함수에서는 __try 를 못 쓴다.
-static bool ScanImportTable(BYTE* b, size_t size, const char* want) {
-    bool found = false;
-    __try {
-        IMAGE_DOS_HEADER* dos = (IMAGE_DOS_HEADER*)b;
-        if (dos->e_magic != IMAGE_DOS_SIGNATURE) return false;
-        if ((size_t)dos->e_lfanew + sizeof(IMAGE_NT_HEADERS32) >= size) return false;
-        IMAGE_NT_HEADERS32* nt = (IMAGE_NT_HEADERS32*)(b + dos->e_lfanew);
-        if (nt->Signature != IMAGE_NT_SIGNATURE) return false;
-
-        WORD magic = nt->OptionalHeader.Magic;
-        IMAGE_DATA_DIRECTORY* dir = NULL;
-        IMAGE_SECTION_HEADER* sec = NULL;
-        WORD nsec = nt->FileHeader.NumberOfSections;
-        if (magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
-            IMAGE_NT_HEADERS64* n64 = (IMAGE_NT_HEADERS64*)nt;
-            dir = n64->OptionalHeader.DataDirectory;
-            sec = IMAGE_FIRST_SECTION(n64);
-        } else if (magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC) {
-            dir = nt->OptionalHeader.DataDirectory;
-            sec = IMAGE_FIRST_SECTION(nt);
-        } else {
-            return false;
-        }
-
-        const int kinds[2] = { IMAGE_DIRECTORY_ENTRY_IMPORT,
-                               IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT };
-        for (int k = 0; k < 2 && !found; k++) {
-            DWORD rva = dir[kinds[k]].VirtualAddress;
-            if (!rva) continue;
-
-            size_t p = 0;
-            for (WORD i = 0; i < nsec; i++) {
-                DWORD va = sec[i].VirtualAddress;
-                DWORD raw = sec[i].SizeOfRawData;
-                if (rva >= va && rva < va + (raw ? raw : 1)) {
-                    size_t off = sec[i].PointerToRawData + (rva - va);
-                    if (off < size) p = off;
-                    break;
-                }
-            }
-            if (!p) continue;
-
-            size_t step   = (k == 0) ? sizeof(IMAGE_IMPORT_DESCRIPTOR) : 32;
-            size_t nameAt = (k == 0) ? 12 : 4;
-            for (int i = 0; i < 4096 && !found; i++) {
-                size_t cur = p + (size_t)i * step;
-                if (cur + step >= size) break;
-                DWORD nameRva = *(DWORD*)(b + cur + nameAt);
-                if (!nameRva) break;
-
-                size_t np = 0;
-                for (WORD j = 0; j < nsec; j++) {
-                    DWORD va = sec[j].VirtualAddress;
-                    DWORD raw = sec[j].SizeOfRawData;
-                    if (nameRva >= va && nameRva < va + (raw ? raw : 1)) {
-                        size_t off = sec[j].PointerToRawData + (nameRva - va);
-                        if (off < size) np = off;
-                        break;
-                    }
-                }
-                if (!np) continue;
-
-                char nm[64];
-                int c = 0;
-                for (; c < 63 && np + (size_t)c < size; c++) {
-                    char ch = (char)b[np + c];
-                    if (!ch) break;
-                    nm[c] = ch;
-                }
-                nm[c] = 0;
-                if (EqNoCaseA(nm, want)) found = true;
-            }
-        }
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        found = false;
-    }
-    return found;
-}
-
-static bool ExeImportsDll(const std::wstring& exePath, const char* want) {
-    HANDLE f = CreateFileW(exePath.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL,
-                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (f == INVALID_HANDLE_VALUE) return false;
-    LARGE_INTEGER sz; sz.QuadPart = 0;
-    GetFileSizeEx(f, &sz);
-    if (sz.QuadPart < 0x200) { CloseHandle(f); return false; }
-    HANDLE m = CreateFileMappingW(f, NULL, PAGE_READONLY, 0, 0, NULL);
-    if (!m) { CloseHandle(f); return false; }
-    BYTE* b = (BYTE*)MapViewOfFile(m, FILE_MAP_READ, 0, 0, 0);
-    bool found = false;
-    if (b) found = ScanImportTable(b, (size_t)sz.QuadPart, want);
-    if (b) UnmapViewOfFile(b);
-    CloseHandle(m);
-    CloseHandle(f);
-    return found;
-}
-
 // 이 게임에서 전에 dxgi.dll 자리가 실패한 적이 있는가.
 // OptiScaler 가 남긴 기록에 그 흔적이 있으면 두 번 시도하지 않는다.
 static bool DxgiFailedBefore(const std::wstring& gameDir) {
@@ -1773,27 +1721,17 @@ static bool DxgiFailedBefore(const std::wstring& gameDir) {
         || l.find("late streamline hook") != std::string::npos;
 }
 
-// winmm.dll 자리에서 스팀 오버레이에 막힌 적이 있는가.
+// 자리 순서에 이름을 넣는다. 이미 있으면 안 넣는다.
 //
-// 2026-10-18. 추측으로 자리를 옮기지 않으려고 넣었다.
-// 라오어 1의 기록에 이 두 줄이 같이 있었다.
-//   CheckWorkingMode OptiScaler working as winmm.dll
-//   hkCreateDXGIFactory2 Skipping wrapping for: gameoverlayrenderer64.dll
-// 스팀 오버레이가 DXGI 를 먼저 쥐고 있어 OptiScaler 가 화면을 못 잡은 것이다.
-// 이 흔적이 그 PC 에 실제로 남아 있을 때만 dxgi.dll 로 옮긴다.
-// 잘 돌아가는 게임에는 이 흔적이 없으니 건드리지 않는다.
-static bool WinmmBlockedBefore(const std::wstring& gameDir) {
-    std::string t = ReadFileBytes(gameDir + L"\\OptiScaler.log");
-    if (t.empty()) return false;
-    std::string l = LowerA(t);
-    if (l.find("working as winmm.dll") == std::string::npos) return false;
-
-    // 비킨 적이 있고, 그런데도 팩토리를 하나도 못 감쌌으면 막힌 것이다.
-    // 누가 막았는지는 게임마다 다르다. 스팀 오버레이일 수도, 리세이드일 수도 있다.
-    // 이름으로 보지 않고 결과(감싼 개수)로 본다.
-    bool skipped = l.find("skipping wrapping for") != std::string::npos;
-    bool wrapped = l.find("wrappedidxgifactory") != std::string::npos;
-    return skipped && !wrapped;
+// 2026-10-24. 전에는 부르는 자리마다 for 문으로 중복을 확인했는데, 블록 끝에서
+// version.dll 과 dbghelp.dll 을 한 번 더 넣는 줄이 있어 세 갈래 모두 두 번씩
+// 들어갔다. order 가 [winmm, version, dbghelp, version, dbghelp] 가 된다.
+// 고르는 결과는 같지만 기록이 지저분하고, 다음에 손댈 때 또 헷갈린다.
+static void AddSlot(std::vector<std::wstring>& order, const wchar_t* name) {
+    for (size_t i = 0; i < order.size(); i++) {
+        if (order[i] == name) { return; }
+    }
+    order.push_back(name);
 }
 
 static std::wstring ChooseProxyName(const std::wstring& gameDir, bool& vulkanGuess) {
@@ -1824,15 +1762,17 @@ static std::wstring ChooseProxyName(const std::wstring& gameDir, bool& vulkanGue
             // 그래서 스트림라인 게임이 dxgi 자리에 있으면 치우고 winmm 으로 보낸다.
             // [되돌리기]를 먼저 누르라고 안내할 수도 있지만, 그 줄을 지나치는
             // 분이 반드시 나온다. 프로그램이 해야 한다.
-            // 단, dxgi 자리가 확인된 게임(위쳐3·라오어1)은 그대로 둔다.
-            std::wstring lg = LowerW(gameDir);
-            bool okHere = (lg.find(L"witcher 3") != std::wstring::npos)
-                       || (lg.find(L"the last of us part i") != std::wstring::npos);
+            //
+            // 2026-10-24 (1.0.3.2). 게임 이름 목록을 없앴다.
+            // 스트림라인 게임은 전부 dxgi 자리로 간다. 이름으로 가르면 목록에
+            // 없는 게임이 계속 나온다 (스파이더맨 2 제보). 그 PC 에서 실제로
+            // 꺼진 흔적이 있을 때만 winmm 으로 되돌린다.
+            //
             // 2026-10-18 추가. "dxgi 자리에 있다"만 보면 안 된다.
             // 붉은사막처럼 그 자리에서 잘 돌고 있는 게임까지 winmm 으로 돌려보내고,
             // 그러면 다음 설치 때 또 dxgi 로 옮겨서 왔다 갔다 한다.
             // 그 PC 에서 실제로 꺼진 흔적이 있을 때만 되돌린다.
-            if (LowerW(all[i]) == L"dxgi.dll" && !okHere
+            if (LowerW(all[i]) == L"dxgi.dll"
                 && FileExists(gameDir + L"\\sl.interposer.dll")
                 && !FileExists(gameDir + L"\\winmm.dll")
                 && DxgiFailedBefore(gameDir)) {
@@ -1840,9 +1780,16 @@ static std::wstring ChooseProxyName(const std::wstring& gameDir, bool& vulkanGue
                 Log(L"  winmm.dll 자리로 되돌립니다.");
                 if (DeleteFileW(p.c_str())) {
                     Log(L"  옛 dxgi.dll 을 치웠습니다.");
+                    // 2026-10-24. 백업본이 우리 것이면 돌려놓지 않는다.
+                    // 옛 판이 우리 파일을 "원래 파일"로 알고 백업해 둔 경우가 있어서,
+                    // 그대로 돌려놓으면 두 자리에 OptiScaler 가 하나씩 생긴다.
                     std::wstring bak = gameDir + L"\\" + BACKUP_DIR + L"\\dxgi.dll";
-                    if (FileExists(bak) && CopyFileW(bak.c_str(), p.c_str(), FALSE))
+                    if (FileExists(bak) && IsOurBackupCandidate(bak, L"dxgi.dll")) {
+                        Log(L"  백업본이 우리가 넣은 파일입니다. 돌려놓지 않고 그 백업본도 치웁니다.");
+                        DeleteFileW(bak.c_str());
+                    } else if (FileExists(bak) && CopyFileW(bak.c_str(), p.c_str(), FALSE)) {
                         Log(L"  게임에 원래 있던 dxgi.dll 을 제자리에 돌려놨습니다.");
+                    }
                     continue;   // 아래 순서 고르기로 내려가 winmm.dll 을 고른다
                 }
                 Log(L"  [경고] 옛 dxgi.dll 을 치우지 못했습니다. 게임을 끄고 다시 눌러 주세요.");
@@ -1850,26 +1797,35 @@ static std::wstring ChooseProxyName(const std::wstring& gameDir, bool& vulkanGue
 
             // winmm 자리에서 dxgi 자리로 옮기는 경우.
             // 1.0.1.2 이하로 깔아 두신 분이 [설치]만 눌러도 옮겨져야 한다.
-            // 옮기는 조건은 둘 중 하나다.
-            //   1) dxgi 자리가 확인된 게임이다 (위쳐3·라오어1)
-            //   2) 그 PC 기록에 winmm 자리에서 막힌 흔적이 있고,
-            //      그 게임이 dxgi.dll 을 직접 불러오는 게임이다
-            std::wstring exeM = FindGameExe(gameDir);
+            //
+            // 2026-10-24 (1.0.3.2). 조건을 넓혔다.
+            // 전에는 게임 이름 목록(위쳐3·라오어1)에 있거나, 그 PC 기록에
+            // winmm 에서 막힌 흔적이 남아 있어야만 옮겼다. 스파이더맨 2 는
+            // 목록에 없고, 1.0.2.0 기록에는 막힌 흔적도 안 남는다. 그래서
+            // 두 분(@께·@J_s_iny)이 [설치]를 다시 눌러도 winmm 에 머물렀고
+            // OptiScaler.ini 를 손으로 고쳐야 했다.
+            // 이제 스트림라인 게임이 winmm 에 있고 dxgi 자리가 비어 있으면
+            // 무조건 옮긴다. 그 PC 에 dxgi 실패 기록이 있을 때만 안 옮긴다.
             bool stuck = (LowerW(all[i]) == L"winmm.dll")
                       && FileExists(gameDir + L"\\sl.interposer.dll")
                       && !FileExists(gameDir + L"\\dxgi.dll")
-                      && !DxgiFailedBefore(gameDir)
-                      && (okHere
-                          || (!exeM.empty() && ExeImportsDll(exeM, "dxgi.dll")
-                              && WinmmBlockedBefore(gameDir)));
+                      && !DxgiFailedBefore(gameDir);
             if (stuck) {
                 Log(L"  winmm.dll 자리에 들어 있습니다. 이 자리에서는 Insert 창이 안 열립니다.");
                 Log(L"  dxgi.dll 자리가 비어 있어 그쪽으로 옮깁니다.");
                 if (DeleteFileW(p.c_str())) {
                     Log(L"  옛 winmm.dll 을 치웠습니다.");
+                    // 2026-10-24. 백업본이 우리 것이면 돌려놓지 않는다.
+                    // @J_s_iny 님 스파이더맨 2 가 바로 이 경우다. 백업 폴더의
+                    // winmm.dll 이 OptiScaler 라서, 돌려놓으면 winmm 과 dxgi 에
+                    // 하나씩 생긴다.
                     std::wstring bak = gameDir + L"\\" + BACKUP_DIR + L"\\winmm.dll";
-                    if (FileExists(bak) && CopyFileW(bak.c_str(), p.c_str(), FALSE))
+                    if (FileExists(bak) && IsOurBackupCandidate(bak, L"winmm.dll")) {
+                        Log(L"  백업본이 우리가 넣은 파일입니다. 돌려놓지 않고 그 백업본도 치웁니다.");
+                        DeleteFileW(bak.c_str());
+                    } else if (FileExists(bak) && CopyFileW(bak.c_str(), p.c_str(), FALSE)) {
                         Log(L"  게임에 원래 있던 winmm.dll 을 제자리에 돌려놨습니다.");
+                    }
                     continue;   // 아래 순서 고르기로 내려가 dxgi.dll 을 고른다
                 }
                 Log(L"  [경고] 옛 winmm.dll 을 치우지 못했습니다. 게임을 끄고 다시 눌러 주세요.");
@@ -1900,7 +1856,7 @@ static std::wstring ChooseProxyName(const std::wstring& gameDir, bool& vulkanGue
         Log(L"  안 되면 [진행 기록 복사]를 눌러 게시물 댓글에 붙여넣어 주세요.");
     }
     std::vector<std::wstring> order;
-    if (vulkanGuess) order.push_back(L"winmm.dll");
+    if (vulkanGuess) { AddSlot(order, L"winmm.dll"); }
 
     // GTA5 인핸스드는 dxgi.dll 을 아예 안 불러온다.
     // GTA5_Enhanced.exe 의 가져오기 목록에 dxgi 가 없어서, 그 이름으로 넣으면
@@ -1910,10 +1866,8 @@ static std::wstring ChooseProxyName(const std::wstring& gameDir, bool& vulkanGue
     if (l.find(L"grand theft auto") != std::wstring::npos || l.find(L"gtav") != std::wstring::npos) {
         Log(L"  GTA5 입니다. dxgi.dll 을 안 불러오는 게임이라 winmm.dll 로 넣습니다.");
         Log(L"  이 게임은 런처의 BattlEye 를 끄지 않으면 설치해도 창이 안 뜹니다.");
-        bool has = false;
-        for (size_t j = 0; j < order.size(); j++) if (order[j] == L"winmm.dll") has = true;
-        if (!has) order.push_back(L"winmm.dll");
-        order.push_back(L"version.dll");
+        AddSlot(order, L"winmm.dll");
+        AddSlot(order, L"version.dll");
     }
 
     // 엔비디아 스트림라인을 쓰는 게임. 여기서 두 번 데었으니 기록을 길게 남긴다.
@@ -1933,44 +1887,16 @@ static std::wstring ChooseProxyName(const std::wstring& gameDir, bool& vulkanGue
     //     CheckWorkingMode sl.common.dll already in memory
     //     StreamlineHooks::hookDlss Failed to hook DLSS: 10DD
     //
-    // 두 사고를 같이 설명하는 것은 하나뿐이다. **exe 의 가져오기 표**다.
+    // 그때는 exe 의 가져오기 표로 가르면 두 사고가 설명된다고 봤다.
     //   라오어   dxgi.dll 을 표에 적어 둔다  → 게임과 동시에 올라온다 → 안 늦다
     //   호라이즌 안 적어 둔다               → 나중에 올라온다 → 스트림라인이 먼저다
-    // 적어 둔 게임에만 dxgi 를 준다. 나머지는 9월 그대로 winmm 이다.
+    // 그래서 적어 둔 게임에만 dxgi 를 줬다.
     //
-    // 추측으로 전체를 바꾸지 않는다. 그 PC 의 기록에 실패 흔적이 있으면
-    // 표와 무관하게 winmm 으로 간다.
+    // 2026-10-24. 그 기준을 버렸다. 옵티 포크 v0.1.33 에서는 호라이즌이
+    // 표에 안 적어 둔 채로도 dxgi 에서 멀쩡히 돌아간다. 아래 블록 참고.
     if (FileExists(gameDir + L"\\sl.interposer.dll")) {
-        std::wstring exe = FindGameExe(gameDir);
-        bool importsDxgi = !exe.empty() && ExeImportsDll(exe, "dxgi.dll");
-        bool blocked = WinmmBlockedBefore(gameDir);
         bool failedBefore = DxgiFailedBefore(gameDir);
 
-        // ── 직접 켜서 확인한 게임만 dxgi.dll 을 준다.
-        //
-        // winmm.dll 자리에서는 DXGI 를 먼저 쥔 쪽(스팀 오버레이, 우리 리세이드)에
-        // 막혀 Insert 창이 안 열린다. dxgi.dll 자리는 그 문제가 없지만,
-        // 호라이즌처럼 늦게 올라오는 게임에서는 게임이 꺼진다.
-        // 둘 다 오늘(2026-10-18) 직접 켜서 확인했다.
-        //
-        //   위쳐3      dxgi 정상. 오류 0건. 라이브로도 몇 시간 돌았다
-        //   라오어 1   dxgi 에서 Insert·F7 정상
-        //   호라이즌   dxgi 에서 꺼짐 → winmm
-        //
-        // 확인 안 한 게임은 9월에 확인된 winmm 으로 간다. 추측으로 넓히지 않는다.
-        // 새 게임을 넣으려면 그 게임을 켜서 확인하고 한 줄 추가할 것.
-        bool knownGood = (l.find(L"witcher 3") != std::wstring::npos)
-                      || (l.find(L"the last of us part i") != std::wstring::npos);
-
-        // dxgi.dll 자리에서 터지는 것이 확인된 게임. 무조건 winmm 으로 보낸다.
-        //
-        //   프래그마타  2026-10-18 두 번 터짐.
-        //               D3d12Proxy::Hook_D3D12CreateDevice Failed to hook: 10DD
-        //               exe 가 dxgi.dll 을 직접 부르는데도 안 된다.
-        //               9월(1.0.0.5)에 winmm 자리에서 정상 확인된 게임이다.
-        //
-        // exe 가 dxgi 를 직접 부르면 안전하다는 판단이 이 게임에서 틀렸다.
-        // 켜 보기 전에는 알 수 없으니, 터진 게임은 이름으로 적어 둔다.
         // ── dxgi.dll 자리에서 꺼지는 것이 확인된 게임.
         //
         // 프래그마타 (2026-10-18, 여러 번 확인)
@@ -1982,54 +1908,44 @@ static std::wstring ChooseProxyName(const std::wstring& gameDir, bool& vulkanGue
         // exe 가 dxgi.dll 을 직접 부르니 안전할 것이라고 봤는데 이 게임에서 틀렸다.
         // 켜 보기 전에는 알 수 없으므로, 터진 게임은 이름으로 적어 둔다.
         bool knownBad = (l.find(L"pragmata") != std::wstring::npos);
+
+        // ── 2026-10-24 (1.0.3.2). 스트림라인 게임은 dxgi 로 보낸다.
+        //
+        // 10월 18일에는 호라이즌이 dxgi 자리에서 게임째로 꺼져서, 직접 켜서
+        // 확인한 게임(위쳐3·라오어1)만 dxgi 를 주고 나머지는 winmm 으로 보냈다.
+        // 그 뒤로 옵티 포크가 바뀌었고, 10월 24일에 같은 게임을 dxgi 로 다시
+        // 켜 보니 멀쩡히 돌아간다.
+        //   호라이즌 dxgi (v0.1.33)  게임 켜짐 · 창 뜸
+        //                            DLSSFeatureDx12::InitDLSS _CreateFeature result: Success
+        //                            10월에 죽이던 Failed to hook DLSS: 10DD 가 없다
+        //
+        // winmm 자리는 누가 DXGI 팩토리를 먼저 만드느냐에 따라 창이 안 뜬다.
+        //   스파이더맨 2  우리 리세이드(d3d12)가 먼저 만들어서 옵티가 비켜선다
+        //                hkCreateDXGIFactory1 Skipping wrapping for: d3d12.dll
+        //                게임은 켜지고 옵티도 올라오는데 창만 안 뜬다. 제보 2건
+        //   호라이즌      게임이 먼저 만들어서 비켜설 일이 없다
+        // 게임마다 갈려서 미리 알 수가 없다. dxgi 자리면 옵티가 DXGI 그 자체라
+        // 비켜설 일이 아예 없다.
+        //
+        // 게임 이름을 하나씩 적는 목록은 제보가 올 때마다 늘어난다. 그 방식을 버렸다.
+        // 전에 쓰던 exe 가져오기 표(ExeImportsDll)도 안 본다. 라오어1 은 부르고
+        // 호라이즌은 안 부르는데 둘 다 dxgi 에서 돌아간다. 가르는 기준이 아니었다.
+        // 단, 그 PC 의 기록에 dxgi 실패 흔적이 있으면 winmm 으로 간다.
         if (knownBad) {
             Log(L"  엔비디아 스트림라인을 쓰는 게임입니다.");
             Log(L"  이 게임은 dxgi.dll 자리에서 꺼지는 것이 확인됐습니다. winmm.dll 로 넣습니다.");
-            bool hasW = false;
-            for (size_t j = 0; j < order.size(); j++) {
-                if (order[j] == L"winmm.dll") { hasW = true; }
-            }
-            if (!hasW) { order.push_back(L"winmm.dll"); }
-            order.push_back(L"version.dll");
-            order.push_back(L"dbghelp.dll");
-            knownGood = false;
-        }
-        if (knownBad) {
-            // 위에서 이미 정했다
-        } else if (knownGood && !failedBefore) {
-            Log(L"  엔비디아 스트림라인을 쓰는 게임입니다.");
-            Log(L"  이 게임은 dxgi.dll 자리에서 확인된 게임이라 그쪽으로 넣습니다.");
-            bool has = false;
-            for (size_t j = 0; j < order.size(); j++) if (order[j] == L"dxgi.dll") has = true;
-            if (!has) order.push_back(L"dxgi.dll");
-            order.push_back(L"winmm.dll");
-            order.push_back(L"version.dll");
-            order.push_back(L"dbghelp.dll");
-        // 2026-10-18. exe 가 dxgi.dll 을 직접 부르는 게임이면 처음부터 dxgi 에 넣는다.
-        // 호라이즌이 dxgi 자리에서 꺼진 이유는 늦게 올라와서였다 —
-        //   CheckWorkingMode sl.common.dll already in memory
-        // exe 가 직접 부르는 이름은 게임이 켜지는 순간 같이 올라오니 늦을 수가 없다.
-        // 전에는 여기에 '로그에 막힌 기록이 있을 때만' 이라는 단서가 있었는데,
-        // 그러면 설치를 두 번 눌러야 한다. 두 번 누르는 사람은 없다.
-        //   라오어1 부름 -> dxgi 확인됨 / 붉은사막 부름 -> dxgi 확인됨(팩토리 91개)
-        //   호라이즌 안부름 -> winmm 확인됨
-        } else if (importsDxgi && !failedBefore) {
-            Log(L"  엔비디아 스트림라인을 쓰는 게임입니다.");
-            Log(L"  이 게임은 dxgi.dll 을 직접 불러오니 그쪽으로 넣습니다.");
-            bool has = false;
-            for (size_t j = 0; j < order.size(); j++) if (order[j] == L"dxgi.dll") has = true;
-            if (!has) order.push_back(L"dxgi.dll");
-            order.push_back(L"winmm.dll");
+            AddSlot(order, L"winmm.dll");
+        } else if (!failedBefore) {
+            Log(L"  엔비디아 스트림라인을 쓰는 게임입니다. dxgi.dll 로 넣습니다.");
+            AddSlot(order, L"dxgi.dll");
+            AddSlot(order, L"winmm.dll");
         } else {
-            Log(L"  엔비디아 스트림라인을 쓰는 게임입니다. winmm.dll 로 넣습니다.");
-            if (blocked && !importsDxgi)
-                Log(L"  (막힌 기록은 있지만 이 게임은 dxgi.dll 을 직접 안 불러옵니다. 옮기면 꺼집니다)");
-            bool has = false;
-            for (size_t j = 0; j < order.size(); j++) if (order[j] == L"winmm.dll") has = true;
-            if (!has) order.push_back(L"winmm.dll");
+            Log(L"  엔비디아 스트림라인을 쓰는 게임입니다.");
+            Log(L"  이 PC 에서 dxgi.dll 자리가 막힌 기록이 있어 winmm.dll 로 넣습니다.");
+            AddSlot(order, L"winmm.dll");
         }
-        order.push_back(L"version.dll");
-        order.push_back(L"dbghelp.dll");
+        AddSlot(order, L"version.dll");
+        AddSlot(order, L"dbghelp.dll");
     }
     for (int i = 0; i < (int)(sizeof(PROXY_NAMES) / sizeof(PROXY_NAMES[0])); i++) {
         bool dup = false;
@@ -2620,9 +2536,20 @@ static bool HasFxFiles(const std::wstring& dir, int depth) {
 // 2026-10-23 매드맥스에서 찾았다. 되돌린 뒤 효과 파일(DLSS5_Feed.fx, dh_uber_motion.fx)은
 // 지워지는데 프리셋은 그 이름을 계속 불러서, 다음에 리세이드 창을 열면 없는 효과를
 // 찾느라 오류가 난다. 넣을 때 켰으면 뺄 때 꺼야 한다.
+// 되돌릴 때 효과 목록에서 우리 것만 뺀다.
+//
+// 2026-10-24. 전에는 DH_UBER_MOTION_020 을 무조건 뺐다. 그런데 설치 쪽은
+// 공급원이 하나도 없을 때만 그것을 넣는다 (InsertFeedInto). 그래서 원래
+// dh_uber_motion 을 모션벡터 공급원으로 쓰시던 분은 되돌리기 한 번에
+// 자기 설정이 사라진다. 우리가 넣은 것일 때만 뺀다.
+// 우리가 넣었으면 바로 뒤에 DLSS5_Feed 가 붙어 있다. 그것을 표시로 쓴다.
+//
+// TechniqueSorting 은 건드리지 않는다. 그 줄은 효과를 켜고 끄는 줄이 아니라
+// 순서를 적어 두는 줄이다. 거기서 이름을 빼면 사용자가 맞춰 둔 순서가 흐트러진다.
 static bool DisableFeedTechniques(const std::wstring& presetPath) {
     const char NL = (char)10;
-    const char* OURS[] = { "DH_UBER_MOTION_020@dh_uber_motion.fx", "DLSS5_Feed@DLSS5_Feed.fx" };
+    const char* FEED = "DLSS5_Feed@DLSS5_Feed.fx";
+    const char* DHU  = "DH_UBER_MOTION_020@dh_uber_motion.fx";
     std::string t = ReadFileBytes(presetPath);
     if (t.empty()) { return false; }
     bool touched = false;
@@ -2635,6 +2562,271 @@ static bool DisableFeedTechniques(const std::wstring& presetPath) {
         start = nl + 1;
     }
     for (size_t i = 0; i < lines.size(); i++) {
+        const char* KEY = "Techniques=";
+        size_t kl = strlen(KEY);
+        if (lines[i].compare(0, kl, KEY) != 0) { continue; }
+        std::string rest = lines[i].substr(kl);
+        std::string tail;
+        while (!rest.empty() && (rest[rest.size() - 1] == (char)13
+                              || rest[rest.size() - 1] == (char)10)) {
+            tail = std::string(1, rest[rest.size() - 1]) + tail;
+            rest.erase(rest.size() - 1);
+        }
+        std::vector<std::string> items;
+        size_t p = 0;
+        while (p <= rest.size()) {
+            size_t c = rest.find(',', p);
+            std::string one = (c == std::string::npos) ? rest.substr(p) : rest.substr(p, c - p);
+            if (!one.empty()) { items.push_back(one); }
+            if (c == std::string::npos) { break; }
+            p = c + 1;
+        }
+        std::vector<std::string> keep;
+        for (size_t j = 0; j < items.size(); j++) {
+            if (items[j] == FEED) { touched = true; continue; }
+            // 우리가 넣은 dh_uber_motion 인가. 바로 뒤에 DLSS5_Feed 가 붙어 있으면 우리 것이다.
+            if (items[j] == DHU && j + 1 < items.size() && items[j + 1] == FEED) {
+                touched = true;
+                continue;
+            }
+            keep.push_back(items[j]);
+        }
+        std::string joined;
+        for (size_t j = 0; j < keep.size(); j++) {
+            if (j > 0) { joined += ","; }
+            joined += keep[j];
+        }
+        lines[i] = std::string(KEY) + joined + tail;
+    }
+    if (!touched) { return false; }
+    std::string out;
+    for (size_t i = 0; i < lines.size(); i++) { out += lines[i]; }
+    return WriteFileBytes(presetPath, out);
+}
+
+// 이 효과가 모션벡터를 만들어 주는 것인가.
+//
+// DLSS5_Feed 는 공급원이 자기보다 앞에 있어야 한다. DLSS5_Feed.fx 머리말에
+// 그대로 적혀 있다 — "enable that provider's technique ABOVE this one in the
+// effect list". 뒤에 있으면 피드가 지난 프레임의 모션벡터를 읽는다.
+//
+// 2026-10-24 데이즈곤에서 실제로 났다. 되돌리기가 DLSS5_Feed 를 목록에서 빼면
+// Lumenite_Kernel, AdaptiveSharpen, FilmGrain2 만 남는데, 다시 설치할 때
+// 우리 둘을 맨 앞에 끼워 넣어서 Lumenite_Kernel 이 피드 뒤로 밀렸다.
+// 카메라를 돌리면 배경이 한 박자 늦게 따라왔다.
+static bool IsMvProvider(const std::string& item) {
+    const char* names[] = { "lumenite_kernel.fx", "lumenite_quantmotion.fx",
+                            "martysmods_launchpad.fx", "vort_motion.fx",
+                            "quint_motionvectors.fx", "dh_uber_motion.fx" };
+    std::string low = LowerA(item);
+    for (int i = 0; i < 6; i++) {
+        if (low.find(names[i]) != std::string::npos) { return true; }
+    }
+    return false;
+}
+
+// 효과 목록 한 줄에 DLSS5_Feed 를 끼워 넣는다.
+//
+// 이미 모션벡터 공급원이 켜져 있으면 그 뒤에 넣는다. 공급원을 하나 더 넣지
+// 않는다. 사용자가 고른 공급원이 따로 있는데 dh_uber_motion 을 같이 켜면
+// 하는 일 없이 프레임만 먹는다.
+// 공급원이 하나도 없을 때만 dh_uber_motion 을 같이 맨 앞에 넣는다.
+//
+// 2026-10-24 매드맥스에서 걸렸다. 이 함수를 TechniqueSorting 줄에도 썼더니
+// 거기는 셰이더 549개가 전부 적힌 목록이라, 안 켠 공급원(vort_Motion, 527번)
+// 뒤에 피드를 꽂아 528번에 놨다. 공급원도 "이미 있다"로 보고 안 넣었다.
+// 순서 규칙은 켠 효과 목록(Techniques)에만 쓴다.
+// TechniqueSorting 은 켜고 끄는 줄이 아니라 전체 순서를 적어 두는 줄이라,
+// 거기엔 빠진 이름만 앞에 붙이고 자리를 옮기지 않는다 (sortLine = true).
+static std::string InsertFeedInto(const std::string& body, bool sortLine) {
+    const char* FEED = "DLSS5_Feed@DLSS5_Feed.fx";
+    const char* DHU  = "DH_UBER_MOTION_020@dh_uber_motion.fx";
+    std::vector<std::string> items;
+    size_t p = 0;
+    while (p <= body.size()) {
+        size_t c = body.find(',', p);
+        std::string it = (c == std::string::npos) ? body.substr(p) : body.substr(p, c - p);
+        if (!it.empty()) { items.push_back(it); }
+        if (c == std::string::npos) { break; }
+        p = c + 1;
+    }
+    // 전체 순서 목록은 자리를 옮기지 않는다. 빠진 이름만 앞에 붙인다.
+    if (sortLine) {
+        std::vector<std::string> head;
+        bool hasDhu = false, hasFeed = false;
+        for (size_t i = 0; i < items.size(); i++) {
+            if (items[i] == DHU)  { hasDhu = true; }
+            if (items[i] == FEED) { hasFeed = true; }
+        }
+        if (!hasDhu)  { head.push_back(DHU); }
+        if (!hasFeed) { head.push_back(FEED); }
+        std::string res;
+        for (size_t i = 0; i < head.size(); i++) { res += head[i] + ","; }
+        for (size_t i = 0; i < items.size(); i++) {
+            if (i > 0) { res += ","; }
+            res += items[i];
+        }
+        return res;
+    }
+
+    // 이미 들어 있는 DLSS5_Feed 는 걷어낸다. 자리를 다시 잡아야 한다.
+    for (size_t i = items.size(); i > 0; i--) {
+        if (items[i - 1] == FEED) { items.erase(items.begin() + (i - 1)); }
+    }
+    int last = -1;
+    for (size_t i = 0; i < items.size(); i++) {
+        if (IsMvProvider(items[i])) { last = (int)i; }
+    }
+    std::vector<std::string> out;
+    if (last >= 0) {
+        for (size_t i = 0; i < items.size(); i++) {
+            out.push_back(items[i]);
+            if ((int)i == last) { out.push_back(FEED); }
+        }
+    } else {
+        out.push_back(DHU);
+        out.push_back(FEED);
+        for (size_t i = 0; i < items.size(); i++) { out.push_back(items[i]); }
+    }
+    std::string res;
+    for (size_t i = 0; i < out.size(); i++) {
+        if (i > 0) { res += ","; }
+        res += out[i];
+    }
+    return res;
+}
+
+// 프리셋 한 칸에 값을 써 넣는다.
+//
+// SetIniKey 를 쓰지 않는 까닭은 그쪽이 "key = value" 로 띄어 쓰기 때문이다.
+// 리세이드는 자기가 쓸 때 "key=value" 로 적는다. 읽기는 둘 다 되지만
+// 한 파일 안에서 모양이 섞이면 나중에 보기 나쁘다.
+// 칸이 없으면 그 자리에 넣고, 섹션이 없으면 파일 끝에 섹션째 만든다.
+static void SetPresetValue(std::string& text, const char* sec,
+                           const char* key, const char* val) {
+    const char NL = (char)10;
+    std::string crlf; crlf += (char)13; crlf += (char)10;
+    std::string want = std::string("[") + sec + "]";
+    std::string wantKey = key;
+
+    std::vector<std::string> lines;
+    size_t start = 0;
+    while (start <= text.size()) {
+        size_t nl = text.find(NL, start);
+        if (nl == std::string::npos) { lines.push_back(text.substr(start)); break; }
+        lines.push_back(text.substr(start, nl - start + 1));
+        start = nl + 1;
+    }
+
+    bool inSec = false;
+    int secEnd = -1;
+    for (size_t i = 0; i < lines.size(); i++) {
+        std::string t = lines[i];
+        while (!t.empty() && (t[t.size() - 1] == (char)13 || t[t.size() - 1] == (char)10)) {
+            t.erase(t.size() - 1);
+        }
+        if (!t.empty() && t[0] == '[') {
+            if (inSec) { secEnd = (int)i; break; }
+            inSec = (t == want);
+            continue;
+        }
+        if (!inSec) { continue; }
+        size_t eq = t.find('=');
+        if (eq == std::string::npos) { continue; }
+        if (t.substr(0, eq) == wantKey) {
+            lines[i] = wantKey + "=" + val + crlf;
+            text.clear();
+            for (size_t j = 0; j < lines.size(); j++) { text += lines[j]; }
+            return;
+        }
+    }
+
+    if (!inSec) {
+        // 섹션이 아예 없다. 파일 끝에 만든다.
+        if (!text.empty() && text[text.size() - 1] != (char)10) { text += crlf; }
+        text += crlf + want + crlf + wantKey + "=" + val + crlf;
+        return;
+    }
+    // 섹션은 있는데 칸이 없다. 섹션 끝에 넣는다.
+    if (secEnd < 0) { secEnd = (int)lines.size(); }
+    lines.insert(lines.begin() + secEnd, wantKey + "=" + val + crlf);
+    text.clear();
+    for (size_t j = 0; j < lines.size(); j++) { text += lines[j]; }
+}
+
+// 프리셋이 비어 있는가.
+//
+// 파일이 없거나, 파일은 있는데 켜 둔 효과가 하나도 없으면 비어 있는 것이다.
+// 리세이드는 한 번 돌고 나면 효과를 안 켜도 파일을 만들어 두기 때문에,
+// "파일이 있나" 만 보면 비어 있는 프리셋까지 남의 것으로 보게 된다.
+//
+// 보이는 효과(AdaptiveSharpen, FilmGrain2)는 이 경우에만 넣는다.
+// 하나라도 켜 두셨으면 맞춰 두신 화면이니 손대지 않는다. (2026-10-24)
+static bool PresetIsEmpty(const std::wstring& path) {
+    std::string t = ReadFileBytes(path);
+    if (t.empty()) { return true; }
+    size_t p = 0;
+    while (p < t.size()) {
+        size_t e = t.find((char)10, p);
+        std::string ln = t.substr(p, (e == std::string::npos ? t.size() : e) - p);
+        p = (e == std::string::npos) ? t.size() : e + 1;
+        while (!ln.empty() && (ln[ln.size() - 1] == (char)13 || ln[ln.size() - 1] == ' ')) {
+            ln.erase(ln.size() - 1);
+        }
+        if (ln.compare(0, 11, "Techniques=") != 0) { continue; }
+        if (ln.size() > 11) { return false; }   // 켜 둔 것이 있다
+    }
+    return true;
+}
+
+// 눈에 보이는 기본 효과를 프리셋에 켜 준다.
+//
+// 2026-10-24. 그동안 리세이드를 넣기만 하고 켜 주는 효과가 하나도 없었다.
+// 깔고 나서 숫자 8 을 눌러도 목록만 보이고, F9 를 눌러도 아무 일이 없었다.
+// 받으신 분이 리세이드가 뭘 해 주는지 알 길이 없다.
+//
+// 넣는 것은 둘뿐이다.
+//
+// 처음에는 데이즈곤 값(curve_height 0.70, grainamount 0.05)을 그대로 가져왔다.
+// 그런데 라오어 1에서 직접 켜 보니 "있는지 없는지 모르겠다" 수준이었다.
+// 그 값은 신경망이 이미 세게 걸린 위에 살짝 얹는 용도라 낮게 잡은 것이었다.
+// 라오어 1에서 올려 가며 맞춘 값이 아래다. F9 로 껐다 켜면 분명히 보인다.
+//   AdaptiveSharpen  curve_height 1.20. 셰이더 기본값 1.0 보다 위다. 범위는 0.01~2.0.
+//                    테두리가 하얗게 뜨는 것은 overshoot 값(L 0.003 / D 0.009)이 막는다.
+//                    그 둘은 건드리지 않으므로 세게 걸어도 할로는 안 생긴다.
+//   FilmGrain2       grainamount 0.10. 범위 0~0.2 의 절반이다. 기본값 0.05 는 사실상 최소다.
+//                    coloramount 0.25. 기본 0.6 에서 내렸다. 실제 센서 노이즈는 거의 휘도 쪽이다.
+//                    grainsize 1.60 (셰이더 기본값). 데이즈곤에서는 2.00 을 쓰는데
+//                    그건 4K 영상 압축에서 살아남게 고른 값이다. 크기는 픽셀 단위라
+//                    해상도가 낮을수록 화면에서 더 굵게 보인다. 모든 게임에 주는 값이라 1.60 으로 둔다.
+//
+// 색을 건드리는 효과(Tonemap, LiftGammaGain, Vibrance 같은 것)는 넣지 않는다.
+// 게임 전용 비주얼 모드와 두 번 겹치고, HDR 로 하시는 분 화면이 깨진다.
+// Vignette 과 MXAO 도 맞춰 보고 뺀 것들이다.
+//
+// 목록 맨 뒤에 붙인다. 공급원과 피드가 앞에 있어야 하기 때문이다.
+// 사용자가 이미 켜 둔 것이면 건드리지 않고, 값도 이미 적혀 있으면 덮지 않는다.
+static bool AddLookTechniques(const std::wstring& presetPath) {
+    const char NL = (char)10;
+    const char* SHARP = "AdaptiveSharpen@AdaptiveSharpen.fx";
+    const char* GRAIN = "FilmGrain2@FilmGrain2.fx";
+    std::string crlf; crlf += (char)13; crlf += (char)10;
+    std::string t = ReadFileBytes(presetPath);
+
+    std::vector<std::string> lines;
+    size_t start = 0;
+    while (start <= t.size()) {
+        size_t nl = t.find(NL, start);
+        if (nl == std::string::npos) { lines.push_back(t.substr(start)); break; }
+        lines.push_back(t.substr(start, nl - start + 1));
+        start = nl + 1;
+    }
+
+    bool touched = false;
+    // 우리가 켠 효과인가. 값은 우리가 켠 것에만 쓴다.
+    bool addSharp = false;
+    bool addGrain = false;
+    for (size_t i = 0; i < lines.size(); i++) {
         const char* keys[] = { "Techniques=", "TechniqueSorting=" };
         for (int k = 0; k < 2; k++) {
             size_t kl = strlen(keys[k]);
@@ -2646,31 +2838,79 @@ static bool DisableFeedTechniques(const std::wstring& presetPath) {
                 tail = std::string(1, rest[rest.size() - 1]) + tail;
                 rest.erase(rest.size() - 1);
             }
-            std::vector<std::string> keep;
-            size_t p = 0;
-            while (p <= rest.size()) {
-                size_t c = rest.find(',', p);
-                std::string one = (c == std::string::npos) ? rest.substr(p) : rest.substr(p, c - p);
-                bool mine = false;
-                for (int m = 0; m < 2; m++) {
-                    if (one == OURS[m]) { mine = true; }
+            const char* want[] = { SHARP, GRAIN };
+            for (int w = 0; w < 2; w++) {
+                if (rest.find(want[w]) != std::string::npos) { continue; }
+                if (!rest.empty()) { rest += ","; }
+                rest += want[w];
+                touched = true;
+                // 켠 효과 줄에서만 표시한다. 그래야 "우리가 켠 것" 인지 안다.
+                if (k == 0) {
+                    if (w == 0) { addSharp = true; }
+                    else { addGrain = true; }
                 }
-                if (mine) { touched = true; }
-                else if (!one.empty()) { keep.push_back(one); }
-                if (c == std::string::npos) { break; }
-                p = c + 1;
             }
-            std::string joined;
-            for (size_t j = 0; j < keep.size(); j++) {
-                if (j) { joined += ","; }
-                joined += keep[j];
-            }
-            lines[i] = std::string(keys[k]) + joined + tail;
+            lines[i] = std::string(keys[k]) + rest + tail;
         }
     }
-    if (!touched) { return false; }
+
     std::string out;
     for (size_t i = 0; i < lines.size(); i++) { out += lines[i]; }
+
+    // 줄이 아예 없는 프리셋이면 새로 만든다.
+    if (out.find("Techniques=") == std::string::npos) {
+        std::string head;
+        head += std::string("Techniques=") + SHARP + "," + GRAIN + crlf;
+        head += std::string("TechniqueSorting=") + SHARP + "," + GRAIN + crlf;
+        out = out.empty() ? head : (out + crlf + head);
+        touched = true;
+        addSharp = true;
+        addGrain = true;
+    }
+
+    if (!touched) { return true; }
+
+    // 값은 우리가 켠 효과에만 쓴다.
+    //
+    // 2026-10-24 붉은사막에서 걸렸다. 처음에는 "칸이 이미 있으면 안 덮는다" 로
+    // 만들었는데, 그 게임에는 프리셋이 이미 있었고 두 효과의 칸이 리세이드
+    // 기본값인 채로 들어 있었다. 그래서 저희 값이 하나도 안 들어가고
+    // 샤픈이 1.0 으로 세게 걸렸다. 테두리가 하얗게 뜨고 그레인은 알록달록해진다.
+    //   curve_height 1.000000   coloramount 0.600000   grainsize 1.600000
+    // 칸이 있다고 맞춰 둔 값인 것은 아니다. 리세이드는 안 쓰는 효과의 기본값도
+    // 파일에 적어 둔다. 그래서 "칸이 있나" 가 아니라 "우리가 켰나" 로 가린다.
+    // 원래 켜 두셨던 효과면 그분이 보시던 값이니 손대지 않는다.
+    // 값은 data\reshade\look_values.ini 에서 읽는다.
+    //
+    // 2026-10-24. 전에는 여기에 숫자 15개를 박아 두었다. 그러면 값 하나를
+    // 바꿀 때마다 프로그램을 다시 만들어야 한다. 오늘만 두 번 바꿨다.
+    // 파일로 빼 두면 그 파일의 숫자만 고치면 된다.
+    // 파일이 없으면 값을 안 쓴다. 효과는 켜지되 셰이더 기본값으로 돈다.
+    {
+        std::string vals = ReadFileBytes(SelfDir() + L"\\" + DATA_DIR + L"\\reshade\\look_values.ini");
+        std::string sec;
+        size_t vp = 0;
+        while (vp < vals.size()) {
+            size_t e = vals.find((char)10, vp);
+            std::string ln = vals.substr(vp, (e == std::string::npos ? vals.size() : e) - vp);
+            vp = (e == std::string::npos) ? vals.size() : e + 1;
+            while (!ln.empty() && (ln[ln.size() - 1] == (char)13 || ln[ln.size() - 1] == ' ')) {
+                ln.erase(ln.size() - 1);
+            }
+            if (ln.empty() || ln[0] == ';') { continue; }
+            if (ln[0] == '[') {
+                size_t rb = ln.find(']');
+                sec = (rb == std::string::npos) ? "" : ln.substr(1, rb - 1);
+                continue;
+            }
+            size_t eq = ln.find('=');
+            if (eq == std::string::npos) { continue; }
+            bool want = (sec == "AdaptiveSharpen.fx" && addSharp)
+                     || (sec == "FilmGrain2.fx"      && addGrain);
+            if (!want) { continue; }
+            SetPresetValue(out, sec.c_str(), ln.substr(0, eq).c_str(), ln.substr(eq + 1).c_str());
+        }
+    }
     return WriteFileBytes(presetPath, out);
 }
 
@@ -2694,9 +2934,24 @@ static bool EnableFeedTechniques(const std::wstring& presetPath) {
     }
 
     // 이미 켜져 있으면 그대로 둔다.
-    if (t.find("DLSS5_Feed@DLSS5_Feed.fx") != std::string::npos) return true;
+    //
+    // 2026-10-24. 전에는 파일 전체에서 찾았다. 그러면 TechniqueSorting 에만
+    // 이름이 남아 있고 Techniques 에는 없는 경우까지 "켜져 있다"로 보고
+    // 그냥 돌아가서, 효과가 영영 안 켜진다. Techniques 줄만 본다.
+    {
+        size_t tp = t.find("Techniques=");
+        // TechniqueSorting= 도 "Techniques=" 를 품고 있으니 줄머리인 것만 고른다.
+        while (tp != std::string::npos && tp != 0 && t[tp - 1] != (char)10 && t[tp - 1] != (char)13) {
+            tp = t.find("Techniques=", tp + 1);
+        }
+        if (tp != std::string::npos) {
+            size_t te = t.find(NL, tp);
+            std::string line = t.substr(tp, (te == std::string::npos ? t.size() : te) - tp);
+            if (line.find("DLSS5_Feed@DLSS5_Feed.fx") != std::string::npos) { return true; }
+        }
+    }
 
-    // 기존 목록 앞에 우리 둘을 끼워 넣는다. 사용자가 켜 둔 효과는 유지한다.
+    // 목록에 끼워 넣는다. 사용자가 켜 둔 효과는 그대로 둔다.
     std::vector<std::string> lines;
     size_t start = 0;
     while (start <= t.size()) {
@@ -2714,7 +2969,8 @@ static bool EnableFeedTechniques(const std::wstring& presetPath) {
             while (!rest.empty() && (rest[rest.size()-1] == (char)13 || rest[rest.size()-1] == (char)10))
                 rest.erase(rest.size() - 1);
             std::string crlf; crlf += (char)13; crlf += (char)10;
-            lines[i] = std::string(keys[k]) + WANT + (rest.empty() ? "" : "," + rest) + crlf;
+            // k==1 이 TechniqueSorting 줄이다. 거기는 자리를 안 옮긴다.
+            lines[i] = std::string(keys[k]) + InsertFeedInto(rest, k == 1) + crlf;
         }
     }
     std::string out;
@@ -3165,6 +3421,36 @@ static bool InstallReShadeBeside(const std::wstring& gameDir, const std::wstring
     }
     SetReShadeCachePath(iniDst);
 
+    // 2026-10-24. 옵티 길에서도 보이는 효과를 켜 준다.
+    // 이 길은 신경망을 옵티가 직접 돌리므로 모션벡터 공급원도 DLSS5_Feed 도
+    // 넣지 않는다. 샤픈과 그레인 둘뿐이다.
+    //
+    // 프리셋이 비어 있을 때만 넣는다. 하나라도 켜 두셨으면 손대지 않는다.
+    // 맞춰 두신 화면을 우리가 바꿔 놓으면 안 된다.
+    // 되돌리기도 이래야 깨끗하다. 쓰시던 프리셋에 효과만 켜 두면 그 파일은
+    // 설치 기록에 안 적혀서 되돌려도 그대로 켜져 있는다.
+    {
+        std::wstring preset = gameDir + L"\\" + RS_PRESET;
+        bool had = FileExists(preset);
+        if (!PresetIsEmpty(preset)) {
+            Log(L"  ReShadePreset.ini 에 쓰시던 효과가 있어 건드리지 않습니다.");
+        } else {
+            // 비어 있어도 원래 있던 파일이면 백업 폴더에 넣어 둔다.
+            // 그러면 되돌리기가 그 빈 프리셋으로 덮어쓴다.
+            // 지우는 것도 아니고 우리 효과가 남지도 않는다. (2026-10-24)
+            if (had) {
+                CreateDirectoryW((gameDir + L"\\" + BACKUP_DIR).c_str(), NULL);
+                std::wstring bak = gameDir + L"\\" + BACKUP_DIR + L"\\" + RS_PRESET;
+                if (!FileExists(bak)) { CopyFileW(preset.c_str(), bak.c_str(), TRUE); }
+            }
+            if (AddLookTechniques(preset)) {
+                added.push_back(RS_PRESET);
+                Log(L"  보이는 효과를 켰습니다: AdaptiveSharpen, FilmGrain2");
+                Log(L"     숫자 8 로 창을 열고 F9 로 껐다 켜면 차이가 보입니다.");
+            }
+        }
+    }
+
     std::wstring shDst = gameDir + L"\\" + RS_SHADERS;
     if (HasFxFiles(shDst, 3)) {
         Log(L"  reshade-shaders 는 이미 있어 건드리지 않습니다.");
@@ -3213,21 +3499,65 @@ static bool InstallFeeder(const std::wstring& gameDir, std::vector<std::wstring>
             Log(L"       압축을 푸신 폴더에서 실행해 주세요. 지금 위치: " + SelfDir());
             return false;
         }
-        std::wstring dst = gameDir + L"\\dxgi.dll";
-        if (FileExists(dst)) {
-            Log(L"[실패] dxgi.dll 이 이미 있는데 ReShade 가 아닙니다.");
-            Log(L"       다른 프로그램이 쓰고 있어 덮어쓰면 그쪽이 망가집니다. 여기서 멈춥니다.");
+        // 어느 이름으로 넣을지 고른다.
+        //
+        // 2026-10-24 톰레이더(2013)에서 걸렸다. 전에는 dxgi.dll 로 박혀 있었다.
+        // 그 게임은 D3D11CreateDeviceAndSwapChain 으로 장치를 만들어서
+        // dxgi.dll 을 직접 부르지 않는다. 파일은 들어갔는데 한 번도 안 올라왔다.
+        // ReShade.log 조차 안 생겼다.
+        //
+        // 게임이 DX11 로 그리면 d3d11.dll 은 반드시 올라온다. DX12 면 d3d12.dll 이
+        // 반드시 올라온다. dxgi 보다 확실하다. 이 길에는 DLSS 5 가 따로 없어서
+        // 누가 DXGI 팩토리를 먼저 쥐느냐를 다툴 일도 없다.
+        std::wstring exeR = FindGameExe(gameDir);
+        std::wstring lowdirR = LowerW(gameDir);
+        bool dx12R = false;
+        if (lowdirR.find(L"dx12") != std::wstring::npos
+         || lowdirR.find(L"d3d12") != std::wstring::npos) {
+            dx12R = true;
+        }
+        if (!dx12R && !exeR.empty() && ExeHasString(exeR, "d3d12.dll")) {
+            dx12R = true;
+        }
+        if (!dx12R) {
+            WIN32_FIND_DATAW fdR;
+            HANDLE hfR = FindFirstFileW((gameDir + L"\\*d3d12*").c_str(), &fdR);
+            if (hfR != INVALID_HANDLE_VALUE) { FindClose(hfR); dx12R = true; }
+        }
+        std::vector<std::wstring> rsOrder;
+        if (dx12R) {
+            rsOrder.push_back(L"d3d12.dll");
+            rsOrder.push_back(L"d3d11.dll");
+        } else {
+            rsOrder.push_back(L"d3d11.dll");
+            rsOrder.push_back(L"d3d12.dll");
+        }
+        rsOrder.push_back(L"dxgi.dll");
+        rsOrder.push_back(L"opengl32.dll");
+
+        std::wstring pick;
+        for (size_t i = 0; i < rsOrder.size(); i++) {
+            if (!FileExists(gameDir + L"\\" + rsOrder[i])) { pick = rsOrder[i]; break; }
+        }
+        if (pick.empty()) {
+            Log(L"[실패] 리세이드를 넣을 빈 이름이 없습니다.");
+            Log(L"       d3d11 · d3d12 · dxgi · opengl32 가 모두 차 있습니다.");
             return false;
         }
+        std::wstring dst = gameDir + L"\\" + pick;
         if (!CopyFileW((rsSrc + L"\\" + RS_DLL).c_str(), dst.c_str(), TRUE)) {
             wchar_t eb[200];
             swprintf_s(eb, L"[실패] ReShade 를 넣지 못했습니다 (윈도우 오류 %lu)", GetLastError());
             Log(eb);
             return false;
         }
-        added.push_back(L"dxgi.dll");
+        added.push_back(pick);
         rs = dst;
-        Log(L"  ReShade 를 dxgi.dll 로 넣었습니다.");
+        {
+            wchar_t pb[160];
+            swprintf_s(pb, L"  ReShade 를 %s 로 넣었습니다.", pick.c_str());
+            Log(pb);
+        }
 
         std::wstring iniDst = gameDir + L"\\" + RS_INI;
         if (FileExists(iniDst)) {
@@ -3336,6 +3666,7 @@ static bool InstallFeeder(const std::wstring& gameDir, std::vector<std::wstring>
         Log(L"  보조 실행 파일을 넣었습니다.");
     }
 
+
     std::wstring shDir = gameDir + L"\\reshade-shaders\\Shaders";
     CreateDirectoryW((gameDir + L"\\reshade-shaders").c_str(), NULL);
     CreateDirectoryW(shDir.c_str(), NULL);
@@ -3348,10 +3679,26 @@ static bool InstallFeeder(const std::wstring& gameDir, std::vector<std::wstring>
     {
         std::wstring preset = gameDir + L"\\" + RS_PRESET;
         bool existed = FileExists(preset);
+        // 보이는 효과를 넣을지는 손대기 전에 정해 둔다.
+        // 바로 아래 EnableFeedTechniques 가 우리 둘을 켜 넣으므로,
+        // 그 뒤에 보면 빈 프리셋도 비어 있지 않은 것으로 보인다. (2026-10-24)
+        bool wasEmpty = PresetIsEmpty(preset);
+        // 비어 있어도 원래 있던 파일이면 백업 폴더에 넣어 둔다.
+        // 되돌리기가 그 빈 프리셋으로 덮어쓴다. (2026-10-24)
+        if (existed && wasEmpty) {
+            CreateDirectoryW((gameDir + L"\\" + BACKUP_DIR).c_str(), NULL);
+            std::wstring bak = gameDir + L"\\" + BACKUP_DIR + L"\\" + RS_PRESET;
+            if (!FileExists(bak)) { CopyFileW(preset.c_str(), bak.c_str(), TRUE); }
+        }
         if (EnableFeedTechniques(preset)) {
-            if (!existed) added.push_back(RS_PRESET);
+            if (!existed || wasEmpty) { added.push_back(RS_PRESET); }
             Log(L"  프리셋에서 모션 벡터와 DLSS5_Feed 효과를 켰습니다.");
             if (existed) Log(L"     쓰시던 효과는 그대로 두고 앞에 두 개만 추가했습니다.");
+            if (!wasEmpty) {
+                Log(L"  ReShadePreset.ini 에 쓰시던 효과가 있어 보이는 효과는 건드리지 않습니다.");
+            } else if (AddLookTechniques(preset)) {
+                Log(L"  보이는 효과 두 개도 켰습니다: AdaptiveSharpen, FilmGrain2");
+            }
         } else {
             Log(L"  [경고] 프리셋을 쓰지 못했습니다. 게임에서 직접 켜셔야 합니다.");
             Log(L"         리세이드 창에서 DH_UBER_MOTION_020 과 DLSS5_Feed 를 켜시고,");
@@ -3710,6 +4057,38 @@ static DWORD WINAPI WorkThread(LPVOID param) {
             delete job; PostMessageW(g_hWnd, WM_DONE, 0, 0); return 0;
         }
 
+        // ── 32비트 게임은 넣지 않는다. 2026-10-24 톰레이더(2013)로 하루를 썼다.
+        //
+        // 먼저 조용히 실패하고 있었다. 우리는 ReShade64.dll 만 넣는데 64비트 dll 은
+        // 32비트 프로세스에 아예 안 들어간다. ReShade.log 조차 안 생기는데
+        // 기록에는 "설치 완료" 가 찍혔다. 자리를 dxgi 에서 d3d11 로 바꿔 가며
+        // 두 번 헛짓했다. 자리 문제가 아니었다.
+        //
+        // 그래서 32비트 길을 만들어 봤다. 실제로 됐다 —
+        //   ReShade32.dll + dlss5-feed.addon32 + host64\(dxgi.dll, renodx, nvngx 둘)
+        //   1872x1052 로 5,331프레임, NR 4.6ms/frame, 83fps -> 60fps
+        //
+        // 그런데 **게임이 최소화된다.** 64비트 보조 프로그램이 창을 만들어야 하고,
+        // 그 창이 전체 화면 게임을 밀어낸다. host_window=0 으로 숨겨도 그렇다.
+        // 받으신 분은 "깔았더니 게임이 꺼진다" 고 받아들인다. 실제로 그렇게 보인다.
+        // 애드온 쪽 구조라 우리가 손댈 자리가 없다.
+        //
+        // 그래서 DX9 게임과 같이 처리한다. 조용히 실패하지 않고 분명히 말한다.
+        // 되살리려면 ExeIs32Bit 로 가른 뒤 위의 구성을 넣으면 된다.
+        // ReShade32.dll 과 dlss5-feed.addon32 는 동봉에서 뺐으므로 다시 넣어야 한다.
+        // (ReShade32.dll 은 공식 설치 프로그램이 32비트 게임에 넣는 그 파일이다)
+        if (ExeIs32Bit(exe)) {
+            Log(L"[중단] 이 게임은 32비트입니다. 아무것도 넣지 않았습니다.");
+            Log(L"       DLSS 5 는 64비트 게임에서만 켜집니다.");
+            std::wstring m;
+            m += L"이 게임은 32비트로 만들어졌습니다." + NLs + NLs;
+            m += L"DLSS 5 는 64비트 게임에서만 켜지므로" + NLs;
+            m += L"아무것도 넣지 않았습니다.";
+            MessageBoxW(g_hWnd, m.c_str(), L"지원하지 않는 게임입니다", MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
+            Status(L"지원하지 않는 게임입니다");
+            delete job; PostMessageW(g_hWnd, WM_DONE, 0, 0); return 0;
+        }
+
         int sup = GameSupportsDlssFor(exe);
         if (sup == 1) {
             Log(L"  → 게임에 DLSS 연결이 들어 있습니다. OptiScaler 방식으로 설치합니다.");
@@ -3898,6 +4277,9 @@ static DWORD WINAPI WorkThread(LPVOID param) {
     CreateDirectoryW(backup.c_str(), NULL);
     // 처음 백업본을 절대 덮어쓰지 않는다. 두 번째 설치부터는 이미 우리가 바꾼 파일이라
     // 그대로 덮으면 사용자의 원래 설정이 영영 사라진다.
+    //
+    // 2026-10-24 (1.0.3.2). 우리 파일은 백업하지 않는다.
+    // 까닭과 실제 피해는 IsOurBackupCandidate 주석에 적어 두었다.
     const wchar_t* keep[] = { L"OptiScaler.ini", L"nvngx_dlss.dll" };
     for (int i = 0; i < 3; i++) {
         std::wstring name = (i < 2) ? std::wstring(keep[i]) : proxy;
@@ -3905,6 +4287,10 @@ static DWORD WINAPI WorkThread(LPVOID param) {
         std::wstring to   = backup  + L"\\" + name;
         if (!FileExists(from)) continue;
         if (FileExists(to)) { Log(L"  이미 백업돼 있어 그대로 둡니다: " + name); continue; }
+        if (IsOurBackupCandidate(from, name)) {
+            Log(L"  우리가 넣은 파일이라 백업하지 않습니다: " + name);
+            continue;
+        }
         if (CopyFileW(from.c_str(), to.c_str(), TRUE)) {
             Log(L"  백업함: " + name);
         } else {
@@ -4710,6 +5096,11 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
     if (gpu.isNvidia) {
         gline = L"그래픽카드: " + gpu.name;
         if (!gpu.nvVersion.empty()) gline += L"      드라이버 " + gpu.nvVersion;
+        {
+            wchar_t tb[160];
+            swprintf_s(tb, L"      (이 판은 드라이버 %s 에서 시험했습니다)", TESTED_DRV);
+            gline += tb;
+        }
         SetWindowTextW(g_hGpu, gline.c_str());
         AddLogLine(gline.c_str());
         // 2026-10-18. 신경망 파일이 요구하는 드라이버를 확인한다.
