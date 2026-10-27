@@ -18,7 +18,7 @@
 
 // ================================================================ 설정
 // 버전 규칙: 아래 OPTI_URL(내려받기 주소)을 바꿀 때마다 맨 뒷자리를 1 올린다.
-static const wchar_t* APP_VER  = L"1.0.3.3";
+static const wchar_t* APP_VER  = L"1.0.3.4";
 static const wchar_t* OPTI_VER = L"F5-DLSSNR v0.1.33";
 // 이 판을 만들 때 전수조사에 쓴 드라이버. 창 위에 같이 적어서
 // 받으신 분이 자기 것과 바로 견줄 수 있게 한다.
@@ -131,10 +131,67 @@ static const wchar_t* PROXY_NAMES[] = {
     L"dxgi.dll", L"winmm.dll", L"version.dll", L"dbghelp.dll", L"wininet.dll", L"winhttp.dll"
 };
 
+// ================================================================ 단축키
+//
+// 2026-10-27. 창에서 고를 수 있게 했다. 전에는 네 개를 코드에 박아 두었다.
+// 아세토코르사 에보에서 "조작이 먹통" 이라는 제보가 왔는데, 리세이드 창이
+// 열려 있는 동안 키보드와 마우스를 리세이드가 가져가기 때문이었다.
+// 창 여는 키를 숫자 8 로 박아 둬서, 숫자 키를 쓰는 게임이면 모르고 누르게 된다.
+// (리세이드 원래 기본값은 Home 이라 그럴 일이 적다)
+//
+// 고른 값 하나를 파일 네 군데에 서로 다른 모양으로 적어야 한다.
+//   ReShade.ini   [INPUT] KeyOverlay / KeyEffects   10진수 + 수식키 셋  "56,0,0,0"
+//   ReShade.ini   [RenoDX.DLSS5] NRToggleKey        10진수             "118"
+//   OptiScaler.ini ShortcutKey / ToggleKey           16진수             "0x76"
+struct KeyChoice { const wchar_t* name; int vk; };
+static const KeyChoice KEY_LIST[] = {
+    { L"Home",        0x24 }, { L"Insert",      0x2D }, { L"Delete",      0x2E },
+    { L"End",         0x23 }, { L"Page Up",     0x21 }, { L"Page Down",   0x22 },
+    { L"Scroll Lock", 0x91 }, { L"Pause",       0x13 }, { L"물결표 `",     0xC0 },
+    { L"F1",  0x70 }, { L"F2",  0x71 }, { L"F3",  0x72 }, { L"F4",  0x73 },
+    { L"F5",  0x74 }, { L"F6",  0x75 }, { L"F7",  0x76 }, { L"F8",  0x77 },
+    { L"F9",  0x78 }, { L"F10", 0x79 }, { L"F11", 0x7A }, { L"F12", 0x7B },
+    { L"숫자 0", 0x30 }, { L"숫자 1", 0x31 }, { L"숫자 2", 0x32 }, { L"숫자 3", 0x33 },
+    { L"숫자 4", 0x34 }, { L"숫자 5", 0x35 }, { L"숫자 6", 0x36 }, { L"숫자 7", 0x37 },
+    { L"숫자 8", 0x38 }, { L"숫자 9", 0x39 },
+    // 영문 글자는 맨 아래에 둔다. 게임이 쓰고 있을 확률이 제일 높아서
+    // 위로 올리면 모르고 고르기 쉽다.
+    { L"A", 0x41 }, { L"B", 0x42 }, { L"C", 0x43 }, { L"D", 0x44 }, { L"E", 0x45 },
+    { L"F", 0x46 }, { L"G", 0x47 }, { L"H", 0x48 }, { L"I", 0x49 }, { L"J", 0x4A },
+    { L"K", 0x4B }, { L"L", 0x4C }, { L"M", 0x4D }, { L"N", 0x4E }, { L"O", 0x4F },
+    { L"P", 0x50 }, { L"Q", 0x51 }, { L"R", 0x52 }, { L"S", 0x53 }, { L"T", 0x54 },
+    { L"U", 0x55 }, { L"V", 0x56 }, { L"W", 0x57 }, { L"X", 0x58 }, { L"Y", 0x59 },
+    { L"Z", 0x5A },
+};
+static const int KEY_COUNT = (int)(sizeof(KEY_LIST) / sizeof(KEY_LIST[0]));
+
+// 칸 네 개. 순서를 바꾸면 아래 코드가 전부 어긋난다.
+enum { HK_RS_OVERLAY = 0, HK_RS_EFFECTS, HK_DLSS_PANEL, HK_DLSS_TOGGLE, HK_N };
+static const wchar_t* HK_LABEL[HK_N] = {
+    L"리세이드 창", L"효과 켜기/끄기", L"DLSS 5 창", L"DLSS 5 켜기/끄기"
+};
+// 아무것도 안 적혀 있을 때 쓰는 값. 지금까지 코드에 박혀 있던 것과 같다.
+static const int HK_DEFAULT[HK_N] = { 0x38, 0x78, 0x2D, 0x76 };   // 숫자8 · F9 · Insert · F7
+
 // ================================================================ 전역
 static HWND g_hWnd, g_hList, g_hLog, g_hInstall, g_hRestore, g_hPick, g_hCopy, g_hStatus, g_hGpu, g_hApiLbl, g_hApi, g_hModeLbl, g_hMode;
 static HWND g_hRs;   // 리세이드도 같이 넣을지 고르는 칸 (기본 꺼짐)
+static HWND g_hKeyLbl[HK_N], g_hKeyBox[HK_N];
+// 칸에 띄울 때 읽어 온 값. 설치할 때 이것과 다를 때만 파일에 쓴다.
+// 안 바꾸시면 아무 파일도 안 건드린다.
+static int g_hkLoaded[HK_N];
+// 대표님이 그 칸을 직접 건드리셨나. 한 번 고르신 칸은 게임을 바꿔도 안 건드린다.
+// 안 건드리신 칸만 그 게임의 지금 값을 보여 준다.
+static bool g_hkTouched[HK_N];
+// 창 쪽 함수인데 설치 코드가 먼저 나와서 미리 알려 둔다.
+static int HotKeyVk(int which);
+static int VkToRow(int vk);
+static void ApplyHotKeys(const std::wstring& gameDir, bool modeB);
+// 지금 고른 키의 이름. 진행 기록에 "숫자 8" 을 박아 두면 키를 바꾸셨을 때
+// 글과 실제가 어긋난다. 2026-10-27 붉은사막에서 9 로 넣고 8 이라고 적었다.
+static std::wstring HotKeyName(int which);
 static HWND g_hTitle, g_hDesc;
+static HWND g_hVer;   // 오른쪽 아래 판 번호. 제목줄만으로는 확인이 어렵다 (2026-10-27)
 static HFONT g_font, g_fontTitle;
 struct Game { std::wstring name; std::wstring dir; };
 static std::vector<Game> g_games;
@@ -314,6 +371,11 @@ static void CopyTree(const std::wstring& from, const std::wstring& to,
                     MakeDirs(bak.substr(0, bak.rfind(L'\\')));
                     if (!CopyFileW(dst.c_str(), bak.c_str(), TRUE)) {
                         // 백업을 못 떴으면 덮지 않는다. 되돌릴 수 없는 것을 만들지 않는다.
+                        // 조용히 넘기지 않는다. 안 넣은 파일이 있다는 것을 적어 둔다.
+                        wchar_t wb[320];
+                        swprintf_s(wb, L"  [경고] 원래 파일을 백업하지 못해 넣지 않았습니다 (윈도우 오류 %lu): ",
+                                   GetLastError());
+                        Log(std::wstring(wb) + r);
                         continue;
                     }
                 }
@@ -3384,7 +3446,7 @@ static bool InstallReShadeBeside(const std::wstring& gameDir, const std::wstring
             Log(L"  이름이 맞지 않는 것으로 보고 " + other + L" 로 옮겨 봅니다.");
             if (MoveFileW((gameDir + L"\\" + have).c_str(), (gameDir + L"\\" + other).c_str())) {
                 added.push_back(other);
-                Log(L"  옮겼습니다. 게임을 켜고 숫자 8 키를 눌러 보세요.");
+                Log(L"  옮겼습니다. 게임을 켜고 " + HotKeyName(HK_RS_OVERLAY) + L" 키를 눌러 보세요.");
             } else {
                 wchar_t eb[200];
                 swprintf_s(eb, L"  [건너뜀] 옮기지 못했습니다 (윈도우 오류 %lu)", GetLastError());
@@ -3479,15 +3541,24 @@ static bool InstallReShadeBeside(const std::wstring& gameDir, const std::wstring
         // 안 그러면 리세이드가 자기 기본 키(Home)로 열리는데 우리는 8 이라고
         // 안내해서, 8 을 눌러도 안 뜨고 Home 을 누르면 모르는 창이 뜬다.
         // 2026-10-15 제보. 에픽판 위쳐3, 316바이트짜리 ReShade.ini 가 있던 경우.
-        SetIniKey(iniDst, "INPUT", "KeyOverlay", "56,0,0,0");
+        //
+        // 2026-10-27. 창에서 고른 값을 쓴다. 칸에는 이 파일의 지금 값이 띄워져
+        // 있으므로, 대표님이 안 건드리면 같은 값을 다시 쓰는 셈이라 아무것도 안 바뀐다.
+        {
+            char kb[32];
+            sprintf_s(kb, "%d,0,0,0", HotKeyVk(HK_RS_OVERLAY));
+            SetIniKey(iniDst, "INPUT", "KeyOverlay", kb);
+        }
         // 2026-10-18 제보. 게임 설정 화면을 누르면 10초쯤 멈춘다는 분이 계셨다.
         // 효과 파일을 886개 넣어드리는데 이 값이 0 이면 꺼둔 효과까지 전부 읽는다.
         // 화면을 다시 만드는 자리마다 그만큼 멈춘다. 1 이면 켜 둔 것만 읽는다.
         // PerformanceMode 는 건드리지 않는다. 그걸 켜면 창에서 값을 못 바꾼다.
-        Log(L"  ReShade.ini 는 이미 있어 그대로 둡니다. 창 여는 키만 숫자 8 로 맞췄습니다.");
+        Log(L"  ReShade.ini 는 이미 있어 그대로 둡니다. 창 여는 키만 맞췄습니다: "
+            + HotKeyName(HK_RS_OVERLAY));
     } else if (CopyFileW((rsSrc + L"\\" + RS_INI).c_str(), iniDst.c_str(), TRUE)) {
         added.push_back(RS_INI);
-        Log(L"  ReShade.ini 를 넣었습니다. (숫자 8 키로 창이 열립니다. Insert 는 DLSS 5 창입니다)");
+        Log(L"  ReShade.ini 를 넣었습니다. (" + HotKeyName(HK_RS_OVERLAY)
+            + L" 키로 창이 열립니다. " + HotKeyName(HK_DLSS_PANEL) + L" 는 DLSS 5 창입니다)");
     }
     SetReShadeCachePath(iniDst);
 
@@ -3516,7 +3587,8 @@ static bool InstallReShadeBeside(const std::wstring& gameDir, const std::wstring
             if (AddLookTechniques(preset)) {
                 added.push_back(RS_PRESET);
                 Log(L"  보이는 효과를 켰습니다: AdaptiveSharpen, FilmGrain2");
-                Log(L"     숫자 8 로 창을 열고 F9 로 껐다 켜면 차이가 보입니다.");
+                Log(L"     " + HotKeyName(HK_RS_OVERLAY) + L" 로 창을 열고 "
+                    + HotKeyName(HK_RS_EFFECTS) + L" 로 껐다 켜면 차이가 보입니다.");
             }
         }
     }
@@ -3593,11 +3665,16 @@ static bool InstallFeeder(const std::wstring& gameDir, std::vector<std::wstring>
 
         std::wstring iniDst = gameDir + L"\\" + RS_INI;
         if (FileExists(iniDst)) {
-            SetIniKey(iniDst, "INPUT", "KeyOverlay", "56,0,0,0");
-                Log(L"  ReShade.ini 는 이미 있어 그대로 둡니다. 창 여는 키만 숫자 8 로 맞췄습니다.");
+            {
+                char kb[32];
+                sprintf_s(kb, "%d,0,0,0", HotKeyVk(HK_RS_OVERLAY));
+                SetIniKey(iniDst, "INPUT", "KeyOverlay", kb);
+            }
+                Log(L"  ReShade.ini 는 이미 있어 그대로 둡니다. 창 여는 키만 맞췄습니다: "
+                    + HotKeyName(HK_RS_OVERLAY));
             } else if (CopyFileW((rsSrc + L"\\" + RS_INI).c_str(), iniDst.c_str(), TRUE)) {
             added.push_back(RS_INI);
-            Log(L"  ReShade.ini 를 넣었습니다. (숫자 8 키로 창이 열립니다)");
+            Log(L"  ReShade.ini 를 넣었습니다. (" + HotKeyName(HK_RS_OVERLAY) + L" 키로 창이 열립니다)");
         }
         SetReShadeCachePath(iniDst);
 
@@ -3790,7 +3867,7 @@ static bool InstallFeeder(const std::wstring& gameDir, std::vector<std::wstring>
         std::string cur = ReadFileBytes(rsIni);
         if (cur.find("NRToggleKey=") == std::string::npos) {
             if (SetIniKey(rsIni, "RenoDX.DLSS5", "NRToggleKey", "118"))
-                Log(L"  껐다 켜는 키를 F7 로 맞췄습니다.");
+                Log(L"  껐다 켜는 키를 맞췄습니다: " + HotKeyName(HK_DLSS_TOGGLE));
         } else {
             Log(L"  껐다 켜는 키는 이미 정해져 있어 그대로 둡니다.");
         }
@@ -4002,16 +4079,27 @@ static DWORD WINAPI WorkThread(LPVOID param) {
                     n += (int)got.size();
                 }
             }
-            // 안의 파일만 지우면 빈 폴더가 남는다. 비어 있을 때만 지워진다.
-            RemoveDirectoryW((gameDir + L"\\host64").c_str());
-            RemoveTree(backup);
             // OptiScaler.ini 는 절대 여기서 지우지 않는다. 위 매니페스트 루프가
             // 백업본이 있으면 되살리고 없으면 지운다. 여기서 또 지우면 방금 되살린
             // 사용자의 원래 설정이 사라진다.
+            //
+            // 2026-10-25. 이 다섯 이름을 조건 없이 지우고 있었다. 게임이 같은 이름을
+            // 가지고 있으면, 위에서 백업에서 되살려 놓은 것을 여기서 다시 지웠다.
+            // 백업에 그 이름이 있으면 게임이 원래 가지고 있던 것이므로 건드리지 않는다.
+            // 백업 폴더를 지우기 전에 해야 알 수 있어서 RemoveTree 보다 앞으로 옮겼다.
             const wchar_t* junk[] = { L"OptiScaler.log", L"setup_windows.bat",
                                       L"setup_linux.sh", L"READ ME - DLSS Neural Rendering.txt",
                                       L"!! EXTRACT ALL FILES TO GAME FOLDER !!" };
-            for (int k = 0; k < 5; k++) DeleteFileW((gameDir + L"\\" + junk[k]).c_str());
+            for (int k = 0; k < 5; k++) {
+                if (FileExists(backup + L"\\" + junk[k])) {
+                    Log(std::wstring(L"게임이 원래 가지고 있던 파일이라 두었습니다: ") + junk[k]);
+                    continue;
+                }
+                DeleteFileW((gameDir + L"\\" + junk[k]).c_str());
+            }
+            // 안의 파일만 지우면 빈 폴더가 남는다. 비어 있을 때만 지워진다.
+            RemoveDirectoryW((gameDir + L"\\host64").c_str());
+            RemoveTree(backup);
             Log(L"남은 파일까지 정리했습니다. 게임 폴더가 설치 전 상태로 돌아갔습니다.");
             wchar_t b[200];
             if (fail > 0) swprintf_s(b, L"파일 %d개를 되돌렸고, %d개는 지우지 못했습니다.", n, fail);
@@ -4457,10 +4545,30 @@ static DWORD WINAPI WorkThread(LPVOID param) {
         RemoveOurReShade(gameDir);
     }
 
-    if (HasReShade(gameDir)) {
-        Log(L"  리세이드가 깔려 있습니다. 충돌을 피하려고 DxgiFactoryWrapping 을 켭니다.");
-        SetIniKey(gameDir + L"\\OptiScaler.ini", "Spoofing", "DxgiFactoryWrapping", "true");
-    }
+    // DxgiFactoryWrapping 은 끈다.
+    //
+    // 9월 13일 첫 릴리즈와 18일 사이에 "리세이드와 충돌을 피한다"며 켜 두었는데,
+    // 왜 켜는지 소스에도 기록에도 한 줄도 안 남겨 두었다.
+    //
+    // 2026-10-25. "게임 설정을 누르면 한참 멈춘다" 는 제보 두 건을 위쳐3에서 재현했다.
+    //   바닐라                      설정이 바로 열린다
+    //   설치 후                     20초 멈춘다
+    //   이 값만 false 로            설정이 바로 열린다
+    // 게임이 설정 화면에서 CreateDXGIFactory1 을 0.1초마다 200번 부르는데,
+    // 켜 두면 그때마다 옵티가 WrappedIDXGIFactory7 을 새로 만든다.
+    // 30초에 200개를 만들고 18개만 놓았다.
+    // 옵티 쪽 설명도 "문제를 일으킬 수 있다" 이고 기본값은 꺼짐이다.
+    //
+    // 줄을 지우지 않고 false 를 써 넣는다. 옛 판이 이미 true 를 적어 둔 분들이
+    // 있어서, 안 쓰면 그분들 ini 에 true 가 그대로 남는다.
+    //
+    // 2026-10-27. 여기에 HasReShade(gameDir) 조건이 붙어 있었다. 그러면
+    // 리세이드를 리세이드 매니저(전역 주입, C:\ProgramData\ReShade)로 쓰시는 분은
+    // 게임 폴더에 리세이드가 없어서 이 줄을 안 쓴다. 옛 판이 적어 둔 true 가
+    // 그대로 남아 설정 화면이 계속 20초 멈춘다. 레데리2 에서 실제로 그랬다.
+    // 조건을 뗀다. 옵티를 넣는 자리면 언제나 쓴다.
+    Log(L"  DxgiFactoryWrapping 을 끕니다. (켜 두면 게임 설정 화면이 20초쯤 멈춥니다)");
+    SetIniKey(gameDir + L"\\OptiScaler.ini", "Spoofing", "DxgiFactoryWrapping", "false");
 
     }
 
@@ -4540,6 +4648,10 @@ static DWORD WINAPI WorkThread(LPVOID param) {
     WriteFileBytes(gameDir + L"\\" + MANIFEST, man);
     Log(L"설치 기록을 남겼습니다. [되돌리기]를 누르면 이 목록대로 원래대로 돌려놓습니다.");
 
+    // 창에서 바꾸신 단축키를 맨 마지막에 적는다. 앞 단계가 쓴 값을 덮어야 해서다.
+    // 안 바꾸셨으면 아무것도 안 쓴다.
+    ApplyHotKeys(gameDir, modeB);
+
     Log(L"───── 설치를 마쳤습니다");
     Log(L"");
     // 사람이 로그를 읽지 않아도 되도록, 설치가 제대로 됐는지 스스로 확인한다.
@@ -4575,16 +4687,16 @@ static DWORD WINAPI WorkThread(LPVOID param) {
         Log(L"     이 게임은 설정에 DLSS 항목이 없습니다. 그래서 바꾸실 것이 없습니다.");
         Log(L"     프로그램이 넣어 둔 것들이 알아서 DLSS 5를 만들어 겁니다.");
         Log(L"  2. 세이브를 불러와 실제 게임 화면으로 들어가세요. 메뉴 화면에서는 적용되지 않습니다.");
-        Log(L"  3. 숫자 8 키로 리세이드 창을 열고 위쪽 RenoDX-DLSSNR 칸을 누르세요.");
+        Log(L"  3. " + HotKeyName(HK_RS_OVERLAY) + L" 키로 리세이드 창을 열고 위쪽 RenoDX-DLSSNR 칸을 누르세요.");
         Log(L"     ACTIVE - NR INJECTED 라고 적혀 있으면 켜진 것입니다.");
-        Log(L"  4. F7 키로 껐다 켜며 비교해 보세요. 얼굴 클로즈업에서 차이가 가장 잘 보입니다.");
+        Log(L"  4. " + HotKeyName(HK_DLSS_TOGGLE) + L" 키로 껐다 켜며 비교해 보세요. 얼굴 클로즈업에서 차이가 가장 잘 보입니다.");
     } else {
         Log(L"  1. 게임을 켭니다.");
         Log(L"  2. 게임 설정 → 그래픽 → 업스케일링(Upscaling)을 반드시 DLSS로 바꿉니다.");
         Log(L"     이걸 안 하면 DLSS 5는 켜지지 않습니다. FSR 이나 꺼짐으로 두면 안 됩니다.");
         Log(L"  3. 세이브를 불러와 실제 게임 화면으로 들어가세요. 메뉴 화면에서는 적용되지 않습니다.");
-        Log(L"  4. Insert 키로 조절 창을 열고 맨 아래 DLSS Neural Rendering 항목을 펼치세요.");
-        Log(L"  5. F7 키로 껐다 켜며 비교해 보세요. 얼굴 클로즈업에서 차이가 가장 잘 보입니다.");
+        Log(L"  4. " + HotKeyName(HK_DLSS_PANEL) + L" 키로 조절 창을 열고 맨 아래 DLSS Neural Rendering 항목을 펼치세요.");
+        Log(L"  5. " + HotKeyName(HK_DLSS_TOGGLE) + L" 키로 껐다 켜며 비교해 보세요. 얼굴 클로즈업에서 차이가 가장 잘 보입니다.");
         Log(L"");
         // 2026-10-23 레데리2. 리세이드 매니저가 이 게임을 들고 있으면 우리 것을 안 넣는데,
         // 안내는 넣었다고 적고 있었다. 안 한 일을 했다고 적으면 안 된다.
@@ -4592,18 +4704,19 @@ static DWORD WINAPI WorkThread(LPVOID param) {
             Log(L"※ 리세이드는 리세이드 매니저가 이미 들고 있어 우리 것을 넣지 않았습니다.");
             Log(L"   창 여는 키는 매니저에서 정하신 그대로입니다.");
         } else {
-            Log(L"※ 리세이드도 같이 넣었습니다. 숫자 8 키로 열립니다. (DLSS 5 창은 Insert 입니다)");
+            Log(L"※ 리세이드도 같이 넣었습니다. " + HotKeyName(HK_RS_OVERLAY)
+                + L" 키로 열립니다. (DLSS 5 창은 " + HotKeyName(HK_DLSS_PANEL) + L" 입니다)");
             Log(L"   8 을 눌러도 창이 안 뜨면 [DLSS 5 설치]를 한 번 더 누르세요.");
             Log(L"   게임마다 읽어 들이는 파일 이름이 달라서, 다른 이름으로 바꿔 넣습니다.");
         }
-        Log(L"※ 프레임이 모자라면 Insert 창에서 Model resolution 을 0.7 로 내리세요.");
+        Log(L"※ 프레임이 모자라면 " + HotKeyName(HK_DLSS_PANEL) + L" 창에서 Model resolution 을 0.7 로 내리세요.");
         // 스트림라인 폴더를 넣었다는 건 이 게임이 DLSS 프레임 생성을 할 줄 안다는 뜻이다.
         // 게임 설정에서 켜야 호출이 생기고, 그래야 옵티가 가로챌 것이 있다.
         if (DirExists(gameDir + L"\\OptiScaler\\streamline")) {
             Log(L"※ 이 게임은 DLSS 프레임 생성을 할 줄 압니다. 쓰시려면 이렇게 하세요.");
             Log(L"   1. 게임 설정에서 DLSS 프레임 생성을 켭니다.");
             Log(L"   2. 그것만으로 프레임이 오르면 거기서 끝입니다. 창은 건드리지 마세요.");
-            Log(L"   3. 안 오를 때만 Insert 창의 Frame Generation 을 DLSSG 로 바꾸세요.");
+            Log(L"   3. 안 오를 때만 " + HotKeyName(HK_DLSS_PANEL) + L" 창의 Frame Generation 을 DLSSG 로 바꾸세요.");
             Log(L"   수직동기화를 켜 두면 주사율에서 막혀 숫자가 안 오릅니다.");
         }
     }
@@ -4683,6 +4796,128 @@ static std::wstring PickFolder(HWND owner) {
 // 판별은 설치할 때와 똑같은 GameSupportsDlssFor 를 쓴다. 두 군데서 다르게 판단하면
 // 창에 보이는 것과 실제로 하는 일이 어긋난다. 다만 고를 때마다 진행 기록이
 // 쌓이면 안 되므로 그 동안만 기록을 잠근다.
+// 단축키 칸 ──────────────────────────────────────────────
+// 콤보에서 고른 키의 VK 값. 못 고른 상태면 기본값을 돌려준다.
+static int HotKeyVk(int which) {
+    if (which < 0 || which >= HK_N || !g_hKeyBox[which]) { return HK_DEFAULT[which]; }
+    int i = (int)SendMessageW(g_hKeyBox[which], CB_GETCURSEL, 0, 0);
+    if (i < 0 || i >= KEY_COUNT) { return HK_DEFAULT[which]; }
+    return KEY_LIST[i].vk;
+}
+
+static std::wstring HotKeyName(int which) {
+    int vk = HotKeyVk(which);
+    for (int i = 0; i < KEY_COUNT; i++) {
+        if (KEY_LIST[i].vk == vk) { return KEY_LIST[i].name; }
+    }
+    return L"?";
+}
+
+// VK 값을 콤보의 몇 번째 줄인지로 바꾼다. 목록에 없는 값이면 -1.
+static int VkToRow(int vk) {
+    for (int i = 0; i < KEY_COUNT; i++) {
+        if (KEY_LIST[i].vk == vk) { return i; }
+    }
+    return -1;
+}
+
+// 고른 게임의 파일에서 지금 값을 읽어 네 칸에 띄운다.
+// 읽은 값을 그대로 두면 설치할 때 안 쓰므로, 손대지 않으면 아무 일도 안 일어난다.
+static void LoadHotKeys(const std::wstring& gameDir) {
+    int vk[HK_N];
+    for (int k = 0; k < HK_N; k++) { vk[k] = HK_DEFAULT[k]; }
+
+    // 2026-10-27. 고른 게임이 바뀌면 "직접 고르셨다" 는 표시를 지운다.
+    // 그래야 새 게임의 지금 값이 칸에 뜬다. 같은 게임에 머무는 동안에는
+    // (리세이드 체크를 누르거나 같은 줄을 다시 눌러도) 고르신 것이 그대로 남는다.
+    {
+        static std::wstring lastDir = L"\x01";
+        if (LowerW(gameDir) != LowerW(lastDir)) {
+            lastDir = gameDir;
+            for (int k = 0; k < HK_N; k++) { g_hkTouched[k] = false; }
+        }
+    }
+
+    if (!gameDir.empty()) {
+        std::wstring rs = gameDir + L"\\" + RS_INI;
+        std::string s;
+        // "56,0,0,0" 처럼 적힌다. 앞의 숫자만 쓴다.
+        s = GetIniKey(rs, "INPUT", "KeyOverlay");
+        if (!s.empty()) { vk[HK_RS_OVERLAY] = atoi(s.c_str()); }
+        s = GetIniKey(rs, "INPUT", "KeyEffects");
+        if (!s.empty()) { vk[HK_RS_EFFECTS] = atoi(s.c_str()); }
+        // "118" 처럼 10진수로 적힌다.
+        s = GetIniKey(rs, "RenoDX.DLSS5", "NRToggleKey");
+        if (!s.empty()) { vk[HK_DLSS_TOGGLE] = atoi(s.c_str()); }
+
+        // 옵티는 "0x2D" 처럼 16진수다. "auto" 면 기본값이라는 뜻이다.
+        std::wstring op = gameDir + L"\\OptiScaler.ini";
+        s = GetIniKey(op, "Menu", "ShortcutKey");
+        if (!s.empty() && s != "auto") { vk[HK_DLSS_PANEL] = (int)strtol(s.c_str(), NULL, 0); }
+        s = GetIniKey(op, "DlssNr", "ToggleKey");
+        if (!s.empty() && s != "auto") { vk[HK_DLSS_TOGGLE] = (int)strtol(s.c_str(), NULL, 0); }
+    }
+
+    for (int k = 0; k < HK_N; k++) {
+        int row = VkToRow(vk[k]);
+        if (row < 0) { row = VkToRow(HK_DEFAULT[k]); vk[k] = HK_DEFAULT[k]; }
+        // 그 게임 파일에 적혀 있던 값. 설치할 때 이것과 다르면 쓴다.
+        g_hkLoaded[k] = vk[k];
+        // 2026-10-27. 직접 고르신 칸은 게임을 바꿔도 건드리지 않는다.
+        // 전에는 목록을 누를 때마다 파일 값으로 되돌아가서 고른 것이 날아갔다.
+        if (g_hkTouched[k]) { continue; }
+        if (!g_hKeyBox[k]) { continue; }
+        SendMessageW(g_hKeyBox[k], CB_SETCURSEL, (WPARAM)row, 0);
+    }
+}
+
+// 대표님이 그 칸을 바꾸셨나. 안 바꾸셨으면 그 파일을 건드리지 않는다.
+static bool HotKeyChanged(int which) {
+    return HotKeyVk(which) != g_hkLoaded[which];
+}
+
+// 설치가 끝난 뒤, 바꾸신 칸만 파일에 쓴다.
+// 파일마다 적는 모양이 달라서 여기 한 곳에 모아 두었다.
+static void ApplyHotKeys(const std::wstring& gameDir, bool modeB) {
+    std::wstring rsIni = gameDir + L"\\" + RS_INI;
+    std::wstring opIni = gameDir + L"\\OptiScaler.ini";
+    char buf[64];
+
+    if (HotKeyChanged(HK_RS_OVERLAY) && FileExists(rsIni)) {
+        sprintf_s(buf, "%d,0,0,0", HotKeyVk(HK_RS_OVERLAY));
+        if (SetIniKey(rsIni, "INPUT", "KeyOverlay", buf)) {
+            Log(L"  리세이드 창 키를 바꿨습니다: " + std::wstring(KEY_LIST[VkToRow(HotKeyVk(HK_RS_OVERLAY))].name));
+        }
+    }
+    if (HotKeyChanged(HK_RS_EFFECTS) && FileExists(rsIni)) {
+        sprintf_s(buf, "%d,0,0,0", HotKeyVk(HK_RS_EFFECTS));
+        if (SetIniKey(rsIni, "INPUT", "KeyEffects", buf)) {
+            Log(L"  리세이드 효과 끄는 키를 바꿨습니다: " + std::wstring(KEY_LIST[VkToRow(HotKeyVk(HK_RS_EFFECTS))].name));
+        }
+    }
+    // DLSS 5 창은 옵티 길에만 있다. 리세이드 길은 리세이드 창 안에 들어 있다.
+    if (!modeB && HotKeyChanged(HK_DLSS_PANEL) && FileExists(opIni)) {
+        sprintf_s(buf, "0x%02X", HotKeyVk(HK_DLSS_PANEL));
+        if (SetIniKey(opIni, "Menu", "ShortcutKey", buf)) {
+            Log(L"  DLSS 5 창 키를 바꿨습니다: " + std::wstring(KEY_LIST[VkToRow(HotKeyVk(HK_DLSS_PANEL))].name));
+        }
+    }
+    if (HotKeyChanged(HK_DLSS_TOGGLE)) {
+        std::wstring nm = KEY_LIST[VkToRow(HotKeyVk(HK_DLSS_TOGGLE))].name;
+        if (modeB && FileExists(rsIni)) {
+            sprintf_s(buf, "%d", HotKeyVk(HK_DLSS_TOGGLE));
+            if (SetIniKey(rsIni, "RenoDX.DLSS5", "NRToggleKey", buf)) {
+                Log(L"  DLSS 5 껐다 켜는 키를 바꿨습니다: " + nm);
+            }
+        } else if (!modeB && FileExists(opIni)) {
+            sprintf_s(buf, "0x%02X", HotKeyVk(HK_DLSS_TOGGLE));
+            if (SetIniKey(opIni, "DlssNr", "ToggleKey", buf)) {
+                Log(L"  DLSS 5 껐다 켜는 키를 바꿨습니다: " + nm);
+            }
+        }
+    }
+}
+
 static void UpdateReShadeCheckbox(const std::wstring& gameRoot) {
     if (!g_hRs) { return; }
     bool mustHave = false;
@@ -4710,9 +4945,13 @@ static void SyncReShadeCheckboxToSelection() {
     int sel = (int)SendMessageW(g_hList, LB_GETCURSEL, 0, 0);
     if (sel < 0 || sel >= (int)g_games.size()) {
         UpdateReShadeCheckbox(L"");
+        LoadHotKeys(L"");
         return;
     }
     UpdateReShadeCheckbox(g_games[sel].dir);
+    // 그 게임이 쓰던 키를 칸에 띄운다. 실행 파일이 하위 폴더에 있는 게임이
+    // 있어서, 설치할 때와 같은 자리를 봐야 한다.
+    LoadHotKeys(ResolveExeDir(g_games[sel].dir));
 }
 
 // 목록에 없는 게임을 사용자가 직접 골라 넣는다.
@@ -4924,7 +5163,8 @@ static void LayoutControls(int w, int h) {
 
     int top = 160;
     int bottom = h - M;
-    int fixedBlock = 24 + ROW_GAP + BTN_H + ROW_GAP + 22 + 8;   // 체크박스 + 버튼줄 + 상태줄
+    const int KEY_H = 26;   // 단축키 줄
+    int fixedBlock = 24 + ROW_GAP + KEY_H + ROW_GAP + BTN_H + ROW_GAP + 22 + 8;   // 체크박스 + 단축키줄 + 버튼줄 + 상태줄
     int space = bottom - top - fixedBlock;
     if (space < 200) space = 200;
     int listH = (int)(space * 0.40);
@@ -4936,6 +5176,45 @@ static void LayoutControls(int w, int h) {
     MoveWindow(g_hList, M, y, cw, listH, TRUE);           y += listH + ROW_GAP;
     MoveWindow(g_hRs, M, y, cw, 24, TRUE);                y += 24 + ROW_GAP;
 
+    // 단축키 네 쌍을 한 줄에 늘어놓는다. 칸 하나가 (이름 + 콤보) 다.
+    //
+    // 2026-10-27. 이름 칸을 122 로 고정했더니 짧은 이름 뒤에 빈 자리가 남고
+    // 정작 다음 이름과는 붙어 버렸다. 이름 길이를 글꼴로 재서 그만큼만 쓰고,
+    // 콤보는 바로 붙이고, 남는 자리를 쌍과 쌍 사이에 고르게 나눈다.
+    {
+        const int GAP_NEAR = 6;    // 이름과 그 콤보 사이
+        int lblW[HK_N], used = 0;
+        HDC dc = GetDC(g_hWnd);
+        HFONT old = (HFONT)SelectObject(dc, g_font);
+        for (int k = 0; k < HK_N; k++) {
+            wchar_t t[64];
+            GetWindowTextW(g_hKeyLbl[k], t, 64);
+            SIZE sz = { 0, 0 };
+            GetTextExtentPoint32W(dc, t, (int)wcslen(t), &sz);
+            lblW[k] = sz.cx + 2;
+            used += lblW[k];
+        }
+        SelectObject(dc, old);
+        ReleaseDC(g_hWnd, dc);
+
+        // 콤보는 넷 다 같은 너비로. 남는 자리를 쌍 사이 간격으로 돌린다.
+        int boxW = 92;
+        int rest = cw - used - (GAP_NEAR + boxW) * HK_N;
+        int farGap = (HK_N > 1) ? rest / (HK_N - 1) : 0;
+        if (farGap < 10) {                       // 자리가 모자라면 콤보를 줄인다
+            farGap = 10;
+            boxW = (cw - used - GAP_NEAR * HK_N - farGap * (HK_N - 1)) / HK_N;
+            if (boxW < 60) { boxW = 60; }
+        }
+        int x = M;
+        for (int k = 0; k < HK_N; k++) {
+            MoveWindow(g_hKeyLbl[k], x, y + 4, lblW[k], 20, TRUE);
+            x += lblW[k] + GAP_NEAR;
+            MoveWindow(g_hKeyBox[k], x, y, boxW, 260, TRUE);
+            x += boxW + farGap;
+        }
+        y += KEY_H + ROW_GAP;
+    }
 
     int bw = 170, bh = BTN_H, gap = 10;
     MoveWindow(g_hCopy,    M, y, 150, bh, TRUE);
@@ -4945,7 +5224,12 @@ static void LayoutControls(int w, int h) {
     y += bh + ROW_GAP;
 
     MoveWindow(g_hStatus, M, y, cw, 22, TRUE);            y += 22 + 8;
-    MoveWindow(g_hLog,    M, y, cw, bottom - y, TRUE);
+    // 맨 아래 한 줄을 판 번호에 내준다.
+    const int VERLINE = 18;
+    int logH2 = bottom - y - VERLINE - 4;
+    if (logH2 < 80) { logH2 = 80; }
+    MoveWindow(g_hLog, M, y, cw, logH2, TRUE);            y += logH2 + 4;
+    MoveWindow(g_hVer, M, y, cw, VERLINE, TRUE);
     InvalidateRect(g_hWnd, NULL, TRUE);
 }
 
@@ -4956,6 +5240,12 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             SyncReShadeCheckboxToSelection();
             return 0;
         }
+        // 단축키 칸을 직접 고르셨다. 이 뒤로는 게임을 바꿔도 이 칸을 안 건드린다.
+        if (HIWORD(wp) == CBN_SELCHANGE) {
+            for (int k = 0; k < HK_N; k++) {
+                if ((HWND)lp == g_hKeyBox[k]) { g_hkTouched[k] = true; return 0; }
+            }
+        }
         if ((HWND)lp == g_hInstall)      StartJob(false);
         else if ((HWND)lp == g_hRestore) StartJob(true);
         else if ((HWND)lp == g_hCopy)    CopyLogToClipboard();
@@ -4965,8 +5255,11 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         if (g_hLog) LayoutControls(LOWORD(lp), HIWORD(lp));
         return 0;
     case WM_GETMINMAXINFO: {
+        // 2026-10-27. 720 으로 두었더니 단축키 네 칸이 겹쳤다.
+        // 이름 122 + 콤보 60 + 사이 8 = 190, 네 칸이면 760.
+        // 좌우 여백 40 과 테두리를 더해 820 이 최소다.
         MINMAXINFO* mmi = (MINMAXINFO*)lp;
-        mmi->ptMinTrackSize.x = 720;
+        mmi->ptMinTrackSize.x = 820;
         mmi->ptMinTrackSize.y = 600;
         return 0;
     }
@@ -5030,7 +5323,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
 
     g_hDesc = CreateWindowW(L"STATIC",
         L"1) 게임을 고릅니다   2) [DLSS 5 설치]를 누릅니다   3) 게임에 DLSS 항목이 있으면 켜 두세요\n"
-        L"찾는 곳 : 스팀 · 엑스박스 · GOG · 에픽 · 록스타 · 유비소프트.   없으면 [폴더에서 고르기]\n"
+        L"찾는 곳 : 스팀 · 엑스박스 · GOG · 에픽 · 록스타 · 유비소프트.   없으면 [목록에 없는 게임]\n"
         L"되는 것 : DX11 · DX12 · 벌칸 게임.   안 되는 것 : DX9 · DX10 같은 오래된 게임\n"
         L"쓰지 말 것 : 온라인 게임. 안티치트가 dll 을 치트로 보고 계정을 정지시킵니다",
         WS_CHILD | WS_VISIBLE, 20, 50, 820, 78, g_hWnd, NULL, hInst, NULL);
@@ -5047,7 +5340,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
 
     g_hCopy = CreateWindowW(L"BUTTON", L"진행 기록 복사",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 20, 356, 150, 38, g_hWnd, NULL, hInst, NULL);
-    g_hPick = CreateWindowW(L"BUTTON", L"폴더에서 고르기",
+    g_hPick = CreateWindowW(L"BUTTON", L"목록에 없는 게임",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 180, 356, 160, 38, g_hWnd, NULL, hInst, NULL);
     g_hInstall = CreateWindowW(L"BUTTON", L"DLSS 5 설치",
         WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 500, 356, 180, 38, g_hWnd, NULL, hInst, NULL);
@@ -5063,6 +5356,22 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
         WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 20, 330, 500, 24, g_hWnd, NULL, hInst, NULL);
     SendMessageW(g_hRs, BM_SETCHECK, BST_CHECKED, 0);
     SendMessageW(g_hRs, WM_SETFONT, (WPARAM)g_font, TRUE);
+
+    // 단축키 네 칸. 자리는 LayoutControls 가 잡는다. 여기서는 만들기만 한다.
+    // 콤보 높이는 펼쳤을 때까지 합한 값이라 크게 준다. 접힌 높이는 글꼴이 정한다.
+    for (int k = 0; k < HK_N; k++) {
+        g_hKeyLbl[k] = CreateWindowW(L"STATIC", HK_LABEL[k],
+            WS_CHILD | WS_VISIBLE, 0, 0, 10, 10, g_hWnd, NULL, hInst, NULL);
+        g_hKeyBox[k] = CreateWindowW(L"COMBOBOX", NULL,
+            WS_CHILD | WS_VISIBLE | WS_VSCROLL | CBS_DROPDOWNLIST,
+            0, 0, 10, 260, g_hWnd, NULL, hInst, NULL);
+        SendMessageW(g_hKeyLbl[k], WM_SETFONT, (WPARAM)g_font, TRUE);
+        SendMessageW(g_hKeyBox[k], WM_SETFONT, (WPARAM)g_font, TRUE);
+        for (int i = 0; i < KEY_COUNT; i++) {
+            SendMessageW(g_hKeyBox[k], CB_ADDSTRING, 0, (LPARAM)KEY_LIST[i].name);
+        }
+        SendMessageW(g_hKeyBox[k], CB_SETCURSEL, (WPARAM)VkToRow(HK_DEFAULT[k]), 0);
+    }
 
     SendMessageW(g_hCopy,    WM_SETFONT, (WPARAM)g_font, TRUE);
     SendMessageW(g_hPick,    WM_SETFONT, (WPARAM)g_font, TRUE);
@@ -5081,6 +5390,11 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
     // 그 뒤로는 한 글자도 안 들어간다. 앞이 밀려 나가는 게 아니라 뒤가 막힌다.
     // 게임을 여러 개 설치하면 그 한도에 닿는다. 2026-10-25 대표님이 찾으셨다.
     SendMessageW(g_hLog, EM_SETLIMITTEXT, (WPARAM)LOG_UI_MAX, 0);
+
+    // 오른쪽 아래에 판 번호. 제목줄에도 있지만 작아서 확인이 어렵다.
+    g_hVer = CreateWindowW(L"STATIC", APP_VER,
+        WS_CHILD | WS_VISIBLE | SS_RIGHT, 0, 0, 10, 10, g_hWnd, NULL, hInst, NULL);
+    SendMessageW(g_hVer, WM_SETFONT, (WPARAM)g_font, TRUE);
 
     {
         RECT rc; GetClientRect(g_hWnd, &rc);
@@ -5184,7 +5498,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int) {
     ScanAll();
     for (size_t i = 0; i < g_games.size(); i++)
         SendMessageW(g_hList, LB_ADDSTRING, 0, (LPARAM)g_games[i].name.c_str());
-    wchar_t b[128]; swprintf_s(b, L"게임 %d개를 찾았습니다. 목록에 없으면 [폴더에서 고르기] 를 쓰세요.", (int)g_games.size());
+    wchar_t b[128]; swprintf_s(b, L"게임 %d개를 찾았습니다. 목록에 없으면 [목록에 없는 게임] 을 쓰세요.", (int)g_games.size());
     AddLogLine(b);
     SyncReShadeCheckboxToSelection();
 

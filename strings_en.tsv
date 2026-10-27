@@ -360,14 +360,14 @@ DLSS 5 설치는 게임에 dll 을 끼워 넣는 방식이라, 안티치트가 �
 이 게임에는 설치하지 않습니다.|||This game will not be touched.
 안티치트가 있는 게임입니다|||This game has anti-cheat
 안티치트가 있어 설치를 멈췄습니다: |||Stopped -- anti-cheat found: 
-폴더에서 고르기|||Pick a folder
-게임 %d개를 찾았습니다. 목록에 없으면 [폴더에서 고르기] 를 쓰세요.|||Found %d games. Not listed? Use [Pick a folder].
+목록에 없는 게임|||Game not listed
+게임 %d개를 찾았습니다. 목록에 없으면 [목록에 없는 게임] 을 쓰세요.|||Found %d games. Not listed? Use [Game not listed].
 1) 게임을 고릅니다   2) [DLSS 5 설치]를 누릅니다   3) 게임에 DLSS 항목이 있으면 켜 두세요|||1) Select a game   2) Press [Install DLSS 5]   3) If the game has a DLSS option, turn it on
-찾는 곳 : 스팀 · 엑스박스 · GOG · 에픽 · 록스타 · 유비소프트.   없으면 [폴더에서 고르기]|||Scans: Steam, Xbox, GOG, Epic, Rockstar, Ubisoft.   Not listed? Use [Pick a folder]
+찾는 곳 : 스팀 · 엑스박스 · GOG · 에픽 · 록스타 · 유비소프트.   없으면 [목록에 없는 게임]|||Scans: Steam, Xbox, GOG, Epic, Rockstar, Ubisoft.   Not listed? Use [Game not listed]
 되는 것 : DX11 · DX12 · 벌칸 게임.   안 되는 것 : DX9 · DX10 같은 오래된 게임|||Works with: DX11, DX12, Vulkan.   Does not work with: DX9, DX10 and older engines
 쓰지 말 것 : 온라인 게임. 안티치트가 dll 을 치트로 보고 계정을 정지시킵니다|||Do not use on online games. Anti-cheat reads the dll as a cheat and can ban your account
 1) 게임을 고릅니다   2) [DLSS 5 설치]를 누릅니다   3) 게임에 DLSS 항목이 있으면 켜 두세요\n|||1) Select a game   2) Press [Install DLSS 5]   3) If the game has a DLSS option, turn it on\n
-찾는 곳 : 스팀 · 엑스박스 · GOG · 에픽 · 록스타 · 유비소프트.   없으면 [폴더에서 고르기]\n|||Scans: Steam, Xbox, GOG, Epic, Rockstar, Ubisoft.   Not listed? Use [Pick a folder]\n
+찾는 곳 : 스팀 · 엑스박스 · GOG · 에픽 · 록스타 · 유비소프트.   없으면 [목록에 없는 게임]\n|||Scans: Steam, Xbox, GOG, Epic, Rockstar, Ubisoft.   Not listed? Use [Game not listed]\n
 되는 것 : DX11 · DX12 · 벌칸 게임.   안 되는 것 : DX9 · DX10 같은 오래된 게임\n|||Works with: DX11, DX12, Vulkan.   Does not work with: DX9, DX10 and older engines\n
 고른 폴더: |||Picked folder: 
   이미 목록에 있는 게임입니다.|||  That game is already in the list.
@@ -596,3 +596,46 @@ DLSS5-Feeder 32비트|||DLSS5-Feeder 32-bit
        DLSS 5 는 64비트 게임에서만 켜집니다.|||          DLSS 5 only works in 64-bit games.
 이 게임은 32비트로 만들어졌습니다.|||This game was built as 32-bit.
 DLSS 5 는 64비트 게임에서만 켜지므로|||DLSS 5 only works in 64-bit games, so
+  [경고] 원래 파일을 백업하지 못해 넣지 않았습니다 (윈도우 오류 %lu): |||  [warning] Could not back up the original, so this file was not installed (Windows error %lu): 
+게임이 원래 가지고 있던 파일이라 두었습니다: |||Left alone, this file belongs to the game: 
+물결표 `|||Grave `
+숫자 0|||Number 0
+숫자 1|||Number 1
+숫자 2|||Number 2
+숫자 3|||Number 3
+숫자 4|||Number 4
+숫자 5|||Number 5
+숫자 6|||Number 6
+숫자 7|||Number 7
+숫자 8|||Number 8
+숫자 9|||Number 9
+리세이드 창|||ReShade panel
+효과 켜기/끄기|||Toggle effects
+DLSS 5 창|||DLSS 5 panel
+DLSS 5 켜기/끄기|||Toggle DLSS 5
+  리세이드 창 키를 바꿨습니다: |||  Changed the key that opens the ReShade panel: 
+  리세이드 효과 끄는 키를 바꿨습니다: |||  Changed the key that toggles the ReShade effects: 
+  DLSS 5 창 키를 바꿨습니다: |||  Changed the key that opens the DLSS 5 panel: 
+  DLSS 5 껐다 켜는 키를 바꿨습니다: |||  Changed the key that toggles DLSS 5: 
+  ReShade.ini 는 이미 있어 그대로 둡니다. 창 여는 키만 맞췄습니다.|||  ReShade.ini is already there and is left alone. Only the panel key was set.
+  DxgiFactoryWrapping 을 끕니다. (켜 두면 게임 설정 화면이 20초쯤 멈춥니다)|||  Turning DxgiFactoryWrapping off. (Left on, the game settings screen stalls for about 20 seconds)
+  옮겼습니다. 게임을 켜고 |||  Moved. Start the game and press 
+ 키를 눌러 보세요.|||.
+  ReShade.ini 는 이미 있어 그대로 둡니다. 창 여는 키만 맞췄습니다: |||  ReShade.ini is already there and is left alone. Only the panel key was set: 
+  ReShade.ini 를 넣었습니다. (|||  Added ReShade.ini. (
+ 키로 창이 열립니다. ||| opens the panel. 
+ 는 DLSS 5 창입니다)||| is the DLSS 5 panel)
+ 로 창을 열고 ||| opens the panel, 
+ 로 껐다 켜면 차이가 보입니다.||| toggles the effects so you can see the difference.
+ 키로 창이 열립니다)||| opens the panel)
+  껐다 켜는 키를 맞췄습니다: |||  Set the toggle key: 
+ 키로 리세이드 창을 열고 위쪽 RenoDX-DLSSNR 칸을 누르세요.||| opens the ReShade panel; then click the RenoDX-DLSSNR tab at the top.
+ 키로 껐다 켜며 비교해 보세요. 얼굴 클로즈업에서 차이가 가장 잘 보입니다.||| toggles it on and off so you can compare. A close-up of a face shows it best.
+ 키로 조절 창을 열고 맨 아래 DLSS Neural Rendering 항목을 펼치세요.||| opens the panel; expand DLSS Neural Rendering at the bottom.
+※ 리세이드도 같이 넣었습니다. |||* ReShade was installed as well. 
+ 키로 열립니다. (DLSS 5 창은 ||| opens it. (The DLSS 5 panel is 
+ 입니다)|||)
+※ 프레임이 모자라면 |||* If you need more frames, open the panel with 
+ 창에서 Model resolution 을 0.7 로 내리세요.||| and lower Model resolution to 0.7.
+   3. 안 오를 때만 |||   3. Only if it does not, open the panel with 
+ 창의 Frame Generation 을 DLSSG 로 바꾸세요.||| and set Frame Generation to DLSSG.
