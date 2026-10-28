@@ -639,3 +639,42 @@ DLSS 5 켜기/끄기|||Toggle DLSS 5
  창에서 Model resolution 을 0.7 로 내리세요.||| and lower Model resolution to 0.7.
    3. 안 오를 때만 |||   3. Only if it does not, open the panel with 
  창의 Frame Generation 을 DLSSG 로 바꾸세요.||| and set Frame Generation to DLSSG.
+  리세이드는 원래 쓰시던 것이라 ini 와 캐시를 그대로 둡니다.|||  ReShade was already yours, so its ini and cache are left alone.
+  [경고] 옮기지 못했습니다: |||  [warning] Could not move: 
+  캐시는 드라이브가 달라 지웠습니다. 다시 깔면 다시 구워집니다: |||  The cache was on another drive, so it was deleted. It is rebuilt on the next install: 
+  이미 있어 덮지 않습니다: |||  Already there, not overwritten: 
+  전에 쓰시던 설정 %d개를 되돌려 놓았습니다.|||  Put back %d setting file(s) you had before.
+  리세이드는 이미 있고 잘 뜨고 있습니다. 그대로 둡니다. (되돌려도 안 지웁니다)|||  ReShade is already here and loading fine. Leaving it. (Restore will not delete it)
+설정 %d개를 따로 보관했습니다. 다시 까실 때 그대로 돌려 드립니다.|||Kept %d setting file(s) aside. They come back when you install again.
+  보관 자리: |||  Kept in: 
+쓰시던 ReShade.ini 는 그대로 두고, 우리가 넣은 줄 %d군데만 걷어냈습니다.|||Your ReShade.ini was left as it is; only the %d line(s) we added were removed.
+[주의] 이 게임 폴더에 커널 안티치트 드라이버가 있습니다: |||[notice] This game folder holds a kernel anti-cheat driver: 
+이 게임에는 커널 안티치트가 들어 있습니다.|||This game ships with a kernel anti-cheat.
+DLSS 5 는 게임에 dll 을 끼워 넣는 방식입니다.|||DLSS 5 works by putting a dll into the game.
+안티치트가 그것을 잡으면 계정이나 PC 가 막힐 수 있습니다.|||If the anti-cheat catches it, your account or your PC may be banned.
+싱글 캠페인만 하셔도 드라이버는 같이 올라옵니다.|||The driver loads even when you only play the single-player campaign.
+실행 파일이 나뉘어 있어도 안티치트는 나뉘지 않습니다.|||The executables are separate, but the anti-cheat is not.
+그래도 설치할까요?|||Install anyway?
+[중단] 안티치트가 있어 설치하지 않았습니다. 아무것도 건드리지 않았습니다.|||[stopped] Anti-cheat present, so nothing was installed. Nothing was touched.
+  설치를 계속하기로 하셨습니다.|||  You chose to go ahead with the install.
+  시험 통로로 들어오셔서 그냥 갑니다.|||  You came in through the test path, so this is skipped.
+[시험] 온라인 게임 차단을 건너뜁니다: |||[test] Skipping the online-game block: 
+온라인 게임 차단을 명령줄로 건너뛰는 중입니다.\n\n|||Skipping the online-game block from the command line.\n\n
+이 게임의 안티치트는 끼어든 dll 을 잡아냅니다.\n|||This game's anti-cheat catches injected dlls.\n
+2026-10-21 제보: 설치 뒤 게임이 0x00001337 로 스스로 꺼졌습니다.\n|||Report of 2026-10-21: after installing, the game shut itself down with 0x00001337.\n
+계정이 영구 정지될 수 있습니다.\n\n|||Your account may be banned for good.\n\n
+차단을 건너뜁니다|||Bypassing the block
+[중단] 차단 건너뛰기를 취소하셨습니다.|||[stopped] You cancelled the bypass.
+캠페인에만 넣습니다: |||Installing to the campaign only: 
+이 게임은 온라인 게임입니다. 캠페인에만 넣습니다.\n\n|||This is an online game. It goes into the campaign only.\n\n
+  넣는 자리: |||  Going into: 
+멀티플레이어가 도는 자리는 건드리지 않습니다.\n|||The folder multiplayer runs from is left alone.\n
+그래도 안티치트 드라이버는 캠페인에도 같이 올라옵니다.\n|||The anti-cheat driver still loads for the campaign as well.\n
+멀티플레이어를 하시기 전에 반드시 [되돌리기] 를 누르세요.\n\n|||Always press [Restore] before you play multiplayer.\n\n
+캠페인에만 넣습니다|||Campaign only
+  이미 여쭤봐서 그냥 갑니다.|||  Already asked about it, so this is skipped.
+  이 게임에는 리세이드를 넣지 않았습니다. 손댈 것이 없습니다.|||  ReShade was not installed for this game, so there is nothing to touch.
+※ 리세이드는 넣지 않았습니다. (창에서 끄셨습니다)|||* ReShade was not installed. (You turned it off in the window)
+DLSS 5 다시 설치|||Install DLSS 5 again
+  리세이드는 전에 우리가 넣은 것입니다. 그대로 두고 기록만 이어 갑니다.|||  ReShade is one we installed earlier. Leaving it and carrying the record forward.
+  셰이더 캐시 자리는 이미 게임 폴더입니다. 줄 모양만 다시 맞췄습니다.|||  The shader cache already points at the game folder. Only the line format was rewritten.

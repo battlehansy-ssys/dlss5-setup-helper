@@ -18,7 +18,7 @@
 
 // ================================================================ 설정
 // 버전 규칙: 아래 OPTI_URL(내려받기 주소)을 바꿀 때마다 맨 뒷자리를 1 올린다.
-static const wchar_t* APP_VER  = L"1.0.3.4";
+static const wchar_t* APP_VER  = L"1.0.3.5";
 static const wchar_t* OPTI_VER = L"F5-DLSSNR v0.1.33";
 // 이 판을 만들 때 전수조사에 쓴 드라이버. 창 위에 같이 적어서
 // 받으신 분이 자기 것과 바로 견줄 수 있게 한다.
@@ -448,7 +448,17 @@ static bool IsSettingsFile(const std::wstring& rel) {
 // dxgi.dll(리세이드)과 winmm.dll(DLSS 5)이 그대로 남아 있었는데
 // "넣었던 것이 모두 사라졌습니다" 라고 나왔다.
 // 우리 파일인지 확인하고 지운다. 남의 것은 건드리지 않는다.
-static void SweepOursDeep(const std::wstring& dir, int depth, int* swept, bool isRoot) {
+// mayTakeReShade — 리세이드 파일도 지워도 되는가.
+//
+// 2026-10-28. 오늘 "남의 리세이드는 설치 기록에 안 적고 되돌려도 안 지운다" 로
+// 고쳐 놨는데, 이 함수가 뒤에서 지우고 있었다. 기록을 보지 않고 파일이 리세이드면
+// 지운다. 레데리2에서 안 터진 것은 거기 리세이드가 매니저 것이라 게임 폴더에
+// 파일이 없어서였다. 리세이드를 게임 폴더에 직접 깔아 쓰시는 분은 한 번에 날아간다.
+//
+// 기록이 아예 없을 때는 참으로 넘긴다. 옛 판이 기록 없이 넣은 리세이드를 치워야 해서다
+// (2026-10-18 프래그마타). 기록이 있고 그 기록이 "우리가 안 깔았다" 고 말할 때만 막는다.
+static void SweepOursDeep(const std::wstring& dir, int depth, int* swept, bool isRoot,
+                          bool mayTakeReShade) {
     if (depth < 0) return;
     const wchar_t* names[] = { L"dxgi.dll", L"winmm.dll", L"version.dll", L"dbghelp.dll",
                                L"wininet.dll", L"winhttp.dll", L"d3d11.dll", L"d3d12.dll",
@@ -456,7 +466,9 @@ static void SweepOursDeep(const std::wstring& dir, int depth, int* swept, bool i
     for (int i = 0; i < 10; i++) {
         std::wstring p = dir + L"\\" + names[i];
         if (!FileExists(p)) { continue; }
-        if (!IsOptiScalerFile(p) && !IsReShadeFile(p)) { continue; }
+        bool opti = IsOptiScalerFile(p);
+        if (!opti && !IsReShadeFile(p)) { continue; }
+        if (!opti && !mayTakeReShade) { continue; }      // 남의 리세이드는 두고 간다
         if (DeleteFileW(p.c_str())) { (*swept)++; }
     }
 
@@ -489,7 +501,7 @@ static void SweepOursDeep(const std::wstring& dir, int depth, int* swept, bool i
         if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
         std::wstring ln = LowerW(n);
         if (ln == L"reshade-shaders" || ln == L"_dlss5_backup") continue;
-        SweepOursDeep(dir + L"\\" + n, depth - 1, swept, false);
+        SweepOursDeep(dir + L"\\" + n, depth - 1, swept, false, mayTakeReShade);
     } while (FindNextFileW(h, &fd));
     FindClose(h);
 }
@@ -592,7 +604,8 @@ static bool IsOurDlssRuntime(const std::wstring& path);
 static bool IsREFramework(const std::wstring& path);
 static bool DisableFeedTechniques(const std::wstring& presetPath);
 
-static int CheckRevertLeftovers(const std::wstring& gameDir, std::wstring& reportOut) {
+static int CheckRevertLeftovers(const std::wstring& gameDir, std::wstring& reportOut,
+                                bool mayTakeReShade) {
     std::wstring NL(1, (wchar_t)10);
     std::wstring bad;
     int miss = 0;
@@ -622,15 +635,26 @@ static int CheckRevertLeftovers(const std::wstring& gameDir, std::wstring& repor
         else swept++;
     }
 
-    // RenoDX 애드온이 올라올 때 만드는 설정 백업을 치운다.
-    //   ReShade.ini.renodx-dlss5-pre-v4-migration-20261023-162148.bak
-    // 날짜가 붙어 이름이 매번 달라서 목록으로는 못 잡는다. 앞머리로 찾는다.
-    // 2026-10-23 바이오하자드 RE4 에서 되돌린 뒤 남아 있는 것을 보고 넣었다.
+    // 애드온들이 올라오면서 스스로 만드는 설정 백업을 치운다.
+    //   ReShade.ini.renodx-dlss5-pre-v4-migration-20261023-162148.bak   RenoDX 가 만든다
+    //   dlss5-feed.cfg.before65                                         피더가 만든다
+    // 이름이 매번 달라지거나 판마다 꼬리가 달라서 목록으로는 못 잡는다. 앞머리로 찾는다.
+    //
+    // 우리가 만드는 파일은 아니지만, **그 애드온을 우리가 넣어서 생긴 것**이다.
+    // 애드온을 지우면서 이것만 두면 게임 폴더가 설치 전으로 안 돌아간다.
+    // 2026-10-23 RE4 에서 renodx 쪽을, 2026-10-28 매드맥스에서 피더 쪽을 찾았다.
     {
-        WIN32_FIND_DATAW fd;
-        std::wstring pat = gameDir + L"\\ReShade.ini.renodx-dlss5-*.bak";
-        HANDLE h = FindFirstFileW(pat.c_str(), &fd);
-        if (h != INVALID_HANDLE_VALUE) {
+        const wchar_t* pats[] = {
+            L"\\ReShade.ini.renodx-dlss5-*.bak",
+            L"\\dlss5-feed.cfg.before*",
+        };
+        for (int pi = 0; pi < (int)(sizeof(pats) / sizeof(pats[0])); pi++) {
+            WIN32_FIND_DATAW fd;
+            std::wstring pat = gameDir + pats[pi];
+            HANDLE h = FindFirstFileW(pat.c_str(), &fd);
+            if (h == INVALID_HANDLE_VALUE) {
+                continue;
+            }
             do {
                 if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) { continue; }
                 std::wstring p = gameDir + L"\\" + fd.cFileName;
@@ -743,7 +767,7 @@ static int CheckRevertLeftovers(const std::wstring& gameDir, std::wstring& repor
     }
 
     // 하위 폴더까지 본다. 옛 판이 거기 넣어둔 것이 있을 수 있다.
-    SweepOursDeep(gameDir, 3, &swept, true);
+    SweepOursDeep(gameDir, 3, &swept, true, mayTakeReShade);
 
     if (swept > 0) {
         wchar_t sb[160];
@@ -1030,6 +1054,22 @@ static void ScanSteam() {
     if (steam.empty()) steam = RegStr(HKEY_LOCAL_MACHINE, L"SOFTWARE\\WOW6432Node\\Valve\\Steam", L"InstallPath");
     if (steam.empty()) { Log(L"스팀을 찾지 못했습니다."); return; }
     std::replace(steam.begin(), steam.end(), L'/', L'\\');
+    // 스팀은 레지스트리에 소문자로 적어 둔다 (c:/program files (x86)/steam).
+    // 그대로 쓰면 우리가 ini 에 써 넣는 경로가 전부 소문자가 되고,
+    // 리세이드가 제 형식으로 다시 쓸 때까지 남는다. 보기에도 다르고
+    // 대표님이 두 게임 ini 를 견줄 때 이것 때문에 헷갈리셨다. (2026-10-28 라오어)
+    // GetLongPathNameW 는 디스크에 실제로 적힌 대소문자를 돌려준다.
+    {
+        wchar_t buf[MAX_PATH];
+        DWORD n = GetLongPathNameW(steam.c_str(), buf, MAX_PATH);
+        if (n > 0 && n < MAX_PATH) {
+            steam = buf;
+        }
+        // 드라이브 문자는 GetLongPathNameW 도 안 고친다.
+        if (steam.size() >= 2 && steam[1] == L':' && steam[0] >= L'a' && steam[0] <= L'z') {
+            steam[0] = (wchar_t)(steam[0] - L'a' + L'A');
+        }
+    }
     Log(L"스팀 설치 위치: " + steam);
 
     std::vector<std::wstring> libs;
@@ -1230,6 +1270,28 @@ static std::wstring FindOnlineGame(const std::wstring& dir) {
 //   <게임>\Wuthering Waves Game\Client\Binaries\Win64\AntiCheatExpert
 // 로 다섯 단계 아래에 있다. 2 단계만 보던 예전 판은 이걸 못 잡았다.
 // 대신 에셋이 잘게 쪼개진 게임에서 오래 걸리지 않도록 살펴보는 개수를 제한한다.
+// 시험용 통로. 명령줄에 /allow-online 이 있을 때만 열린다.
+//
+// 온라인 게임 차단은 그대로 둔다. 배포본을 두 번 눌러 켜시는 분은 이 길로 올 수 없다.
+// 차단을 아예 빼면 받으신 분들도 콜 오브 듀티에 깔 수 있게 된다.
+// 2026-10-21 제보가 이미 한 건 있다 (설치 뒤 cod.exe 가 0x00001337 로 스스로 꺼짐).
+// 2026-10-28. 대표님이 당신 계정으로 직접 시험해 보시려고 내신 길이다.
+static bool AllowOnlineOverride() {
+    int argc = 0;
+    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (!argv) {
+        return false;
+    }
+    bool on = false;
+    for (int i = 1; i < argc; i++) {
+        if (_wcsicmp(argv[i], L"/allow-online") == 0) {
+            on = true;
+        }
+    }
+    LocalFree(argv);
+    return on;
+}
+
 static std::wstring FindAntiCheat(const std::wstring& dir, int depth, int* budget = 0) {
     int own = 200000;
     if (!budget) budget = &own;
@@ -1415,7 +1477,57 @@ static bool DirHasExe(const std::wstring& dir) {
 // 예전에는 먼저 걸리는 폴더를 그냥 반환해서 Engine 이 알파벳 순으로 SB 보다 먼저 잡혔고,
 // 그 폴더에는 exe 가 없어 "실행 파일 못 찾음" 으로 설치가 중단됐다.
 // 이제는 exe 가 들어 있는 폴더를 먼저 쓰고, Engine 은 다른 후보가 없을 때만 쓴다.
+// 콜 오브 듀티는 폴더 하나에 런처·멀티·캠페인이 같이 들어 있다.
+//
+//   Call of Duty HQ\cod.exe             231MB  런처와 멀티플레이어
+//   Call of Duty HQ\sp26\sp26-cod.exe   229MB  캠페인
+//
+// 캠페인은 sp26 밑에 dll 을 통째로 한 벌 더 갖고 있다 (amd_fidelityfx · nvngx_dlss ·
+// libxess · D3D12). 캠페인은 그 한 벌을 쓴다. 그래서 루트에 깔면 캠페인에는
+// 아무 효과가 없다. 멀티 런처 옆에 놓일 뿐이다. 쓸모도 없고 자리도 나쁘다.
+// 2026-10-28 모던워페어4 에서 확인했다.
+//
+// 폴더 이름의 해(sp26)는 해마다 바뀌므로 이름으로 찾지 않는다.
+// 루트에 cod.exe 가 있고 하위 폴더에 *-cod.exe 가 있으면 그 폴더가 캠페인이다.
+static bool FindCodCampaignDir(const std::wstring& dir, std::wstring& spDir) {
+    if (!FileExists(dir + L"\\cod.exe")) {
+        return false;
+    }
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW((dir + L"\\*").c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+    bool found = false;
+    do {
+        std::wstring n = fd.cFileName;
+        if (n == L"." || n == L"..") {
+            continue;
+        }
+        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            continue;
+        }
+        std::wstring sub = dir + L"\\" + n;
+        WIN32_FIND_DATAW f2;
+        HANDLE h2 = FindFirstFileW((sub + L"\\*-cod.exe").c_str(), &f2);
+        if (h2 == INVALID_HANDLE_VALUE) {
+            continue;
+        }
+        FindClose(h2);
+        spDir = sub;
+        found = true;
+    } while (!found && FindNextFileW(h, &fd));
+    FindClose(h);
+    return found;
+}
+
 static std::wstring ResolveExeDir(const std::wstring& dir) {
+    {
+        std::wstring sp;
+        if (FindCodCampaignDir(dir, sp)) {
+            return sp;
+        }
+    }
     std::wstring ue = dir + L"\\Binaries\\Win64";
     if (DirExists(ue)) return ue;
     std::wstring engineDir, firstDir;
@@ -2127,7 +2239,7 @@ static void ApplyPreset(const std::wstring& iniPath) {
         while (!key.empty() && (key.back() == ' ' || key.back() == '\t')) key.pop_back();
         for (size_t k = 0; k < sizeof(PRESET) / sizeof(PRESET[0]); k++) {
             if (section == W2U(PRESET[k].section) && key == W2U(PRESET[k].key)) {
-                lines[i] = key + " = " + W2U(PRESET[k].value) + "\r\n";
+                lines[i] = key + "=" + W2U(PRESET[k].value) + "\r\n";
                 changed++;
                 break;
             }
@@ -2165,7 +2277,7 @@ static void ApplyPreset(const std::wstring& iniPath) {
             if (sec2 == wantSec && key == wantKey) have = true;
         }
         if (have) continue;
-        std::string line = wantKey + " = " + W2U(PRESET[k].value) + "\r\n";
+        std::string line = wantKey + "=" + W2U(PRESET[k].value) + "\r\n";
         if (secEnd != (size_t)-1) {
             lines.insert(lines.begin() + secEnd, line);
         } else {
@@ -2293,7 +2405,9 @@ static bool SetIniKey(const std::wstring& iniPath, const char* wantSec,
         while (!key.empty() && (key.back() == 32 || key.back() == (char)9)) key.pop_back();
         if (section == wantSec && key == wantKey) {
             std::string crlf; crlf += (char)13; crlf += (char)10;
-            lines[i] = key + " = " + val + crlf;
+            // 리세이드와 옵티스케일러는 "키=값" 으로 쓴다. 우리도 똑같이 쓴다.
+            // 2026-10-28. 전에는 " = " 로 써서 우리가 손댄 줄만 모양이 달랐다.
+            lines[i] = key + "=" + val + crlf;
             hit = true; break;
         }
     }
@@ -2315,14 +2429,14 @@ static bool SetIniKey(const std::wstring& iniPath, const char* wantSec,
             std::string crlf; crlf += (char)13; crlf += (char)10;
             if (!lines.empty() && !lines.back().empty()) lines.push_back(crlf);
             lines.push_back(std::string("[") + wantSec + "]" + crlf);
-            lines.push_back(std::string(wantKey) + " = " + val + crlf);
+            lines.push_back(std::string(wantKey) + "=" + val + crlf);
             std::string out2;
             for (size_t i = 0; i < lines.size(); i++) out2 += lines[i];
             return WriteFileBytes(iniPath, out2);
         }
         if (insertAt < 0) insertAt = (int)lines.size();
         std::string crlf; crlf += (char)13; crlf += (char)10;
-        lines.insert(lines.begin() + insertAt, std::string(wantKey) + " = " + val + crlf);
+        lines.insert(lines.begin() + insertAt, std::string(wantKey) + "=" + val + crlf);
         hit = true;
     }
     std::string out;
@@ -2382,6 +2496,419 @@ static std::string WideToUtf8(const std::wstring& w) {
     return s;
 }
 
+// ================================================================ 격리 보관
+// 되돌리기는 설치 전으로 돌려놓는 것이다. 그런데 ReShade.ini 처럼 게임 안에서
+// 맞추신 값이 든 파일은, 지우면 그 설정이 사라지고 두면 게임 폴더가 순정이 아니다.
+// 둘 다 안 된다. 그래서 지우지도 두지도 않고 우리 자리로 옮겨 둔다.
+// 다시 까실 때 돌려 드린다. 2026-10-28 대표님 설계.
+//
+// 남겨 둔 ini 는 실제로 사고를 냈다. 2026-10-28 새벽 레데리2에서 되돌리기가
+// renodx-mfgunlock.addon64 파일은 지웠는데 ReShade.ini 의
+//   LoadFromDllMain=renodx-mfgunlock.addon64
+// 한 줄이 남아서, 리세이드가 없는 파일을 계속 찾아 오류 126 을 냈다.
+// readme 에 적힌 "쓸모없는 OptiScaler.ini 가 남는다" 도 같은 뿌리다.
+//
+// 안티치트가 붙은 게임에서는 이게 더 중요하다. 캠페인만 하고 멀티 할 때
+// 순정으로 돌리시려면 자주 오가게 되는데, 격리가 없으면 깔 때마다 처음부터 맞춰야 한다.
+
+// 격리 자리. %LOCALAPPDATA%\DLSS5Setup
+static std::wstring QuarantineRoot() {
+    wchar_t buf[MAX_PATH] = {0};
+    DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", buf, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) {
+        return L"";
+    }
+    std::wstring root = std::wstring(buf) + L"\\DLSS5Setup";
+    CreateDirectoryW(root.c_str(), NULL);
+    return root;
+}
+
+// 게임마다 폴더를 따로 쓴다. 이름만으로는 겹칠 수 있어 경로를 섞어 짧은 열쇠를 붙인다.
+// (스팀 라이브러리를 둘 쓰시면 같은 이름의 폴더가 둘일 수 있다)
+static std::wstring PathKey8(const std::wstring& path) {
+    std::wstring low = LowerW(path);
+    unsigned long long hv = 1469598103934665603ULL;      // FNV-1a
+    for (size_t i = 0; i < low.size(); i++) {
+        wchar_t c = low[i];
+        if (c == L'/') { c = L'\\'; }
+        hv ^= (unsigned long long)c;
+        hv *= 1099511628211ULL;
+    }
+    wchar_t out[20];
+    swprintf_s(out, L"%08X", (unsigned int)(hv ^ (hv >> 32)));
+    return out;
+}
+
+static std::wstring QuarantineDirFor(const std::wstring& gameDir) {
+    std::wstring root = QuarantineRoot();
+    if (root.empty()) {
+        return L"";
+    }
+    std::wstring path = gameDir;
+    while (!path.empty() && (path[path.size() - 1] == L'\\' || path[path.size() - 1] == L'/')) {
+        path.erase(path.size() - 1);
+    }
+
+    // 폴더 이름은 사람이 보고 어느 게임인지 알 수 있어야 한다.
+    //
+    // 2026-10-28. 설치 자리의 마지막 토막을 그냥 썼더니 위쳐3가 x64_dx12_A1B2C3D4 가
+    // 됐다. 던워커·데이즈곤은 Win64_..., 붉은사막은 bin64_... 이 된다. 보고 알 수가 없다.
+    // 그래서 뻔한 이름이면 한 칸씩 올라가 게임 이름을 찾는다. 세 칸까지만 본다.
+    // 열쇠(해시)는 어차피 전체 경로로 만드니 이름이 겹쳐도 안 섞인다.
+    std::wstring leaf;
+    for (int up = 0; up < 3; up++) {
+        size_t cut = path.find_last_of(L"\\/");
+        leaf = (cut == std::wstring::npos) ? path : path.substr(cut + 1);
+        std::wstring low = LowerW(leaf);
+        bool dull = (low == L"bin" || low == L"bin64" || low == L"binaries" ||
+                     low == L"retail" || low == L"game" || low == L"_storage_" ||
+                     low.compare(0, 3, L"x64") == 0 || low.compare(0, 3, L"x86") == 0 ||
+                     low.compare(0, 5, L"win64") == 0 || low.compare(0, 5, L"win32") == 0);
+        if (!dull || cut == std::wstring::npos) {
+            break;
+        }
+        path = path.substr(0, cut);
+    }
+    // 폴더 이름에 못 쓰는 글자를 걸러낸다.
+    for (size_t i = 0; i < leaf.size(); i++) {
+        wchar_t c = leaf[i];
+        if (c == L':' || c == L'*' || c == L'?' || c == L'"' || c == L'<' || c == L'>' || c == L'|') {
+            leaf[i] = L'_';
+        }
+    }
+    if (leaf.empty()) {
+        leaf = L"game";
+    }
+    return root + L"\\" + leaf + L"_" + PathKey8(gameDir);
+}
+
+// 같은 드라이브면 이름만 바뀐다. 몇 GB 라도 즉시 끝난다.
+//
+// MOVEFILE_COPY_ALLOWED 를 주면 안 된다. 주면 윈도우가 드라이브가 다를 때
+// 말없이 통째로 복사한다. reshade-cache 가 몇 GB 라 그게 두 번 일어난다.
+// 안 주면 ERROR_NOT_SAME_DEVICE 로 돌아오므로 우리가 갈림길을 잡을 수 있다.
+// 볼륨을 견줄 필요도, 드라이브 문자를 볼 필요도 없다. subst 나 심볼릭 링크도 자동으로 맞는다.
+static bool MoveNoCopy(const std::wstring& from, const std::wstring& to, bool* crossVolume) {
+    if (crossVolume) { *crossVolume = false; }
+    if (MoveFileW(from.c_str(), to.c_str())) {
+        return true;
+    }
+    DWORD e = GetLastError();
+    if (e == ERROR_NOT_SAME_DEVICE && crossVolume) {
+        *crossVolume = true;
+    }
+    return false;
+}
+
+// 격리 대상. 전부 "지우면 설정이 날아가고 두면 순정이 아닌" 것들이다.
+static const wchar_t* QUAR_FILES[] = {
+    L"ReShade.ini", L"ReShadePreset.ini",
+    L"ReShade.log", L"ReShade.log1",
+    L"dlss5-feed.cfg", L"OptiScaler.ini"
+};
+// reshade-shaders 도 같이 옮긴다. 2026-10-28.
+//
+// 4052줄에 "효과 파일은 설치 기록에 적지 않는다" 고 적혀 있고 까닭이 둘이었다.
+//   1) 캐시는 효과 파일을 보고 구운 것이라, 효과가 새 파일이 되면 캐시가 쓸모없어진다
+//   2) 공용 폴더라, 지우면 매니저로 깐 분의 리세이드가 효과를 못 찾는다
+//
+// 둘 다 격리가 풀어 준다.
+//   1) 캐시와 효과를 같이 옮기고 같이 돌려놓으니 짝이 안 어긋난다.
+//      지금까지는 캐시만 남겨서 오히려 짝이 깨져 있었다
+//   2) 매니저로 까신 분은 ReShadeManagerHasGame 에 걸려 우리가 리세이드를 안 넣는다.
+//      그러면 "나" 갈래라 격리를 아예 안 한다. 그분 폴더는 안 건드린다
+//
+// 2026-10-28 모던워페어4 에서 되돌린 뒤 이 886개만 남는 것을 보고 넣었다.
+static const wchar_t* QUAR_DIRS[] = { L"reshade-cache", L"reshade-shaders" };
+
+// 되돌리기 끝에 부른다. 옮긴 개수를 돌려준다.
+//
+// weInstalledReShade 가 거짓이면 리세이드는 원래 그분 것이다. 아무것도 안 옮긴다.
+// 그분의 ReShade.ini 를 들어내면, 되돌린 뒤 게임을 켤 때 리세이드가 빈 ini 를
+// 새로 만들어 설정이 통째로 날아간다. 우리 도구를 다시 깔지도 않으셨는데.
+// 게임 폴더에 리세이드 본체가 있는가. 프록시 자리를 하나씩 열어 본다.
+// 되돌리기 문구를 고를 때 쓴다. "원래 쓰시던 것" 과 "아예 없다" 는 다른 말이다.
+static bool HasReShadeDll(const std::wstring& gameDir) {
+    const wchar_t* hooks[] = { L"d3d11.dll", L"d3d12.dll", L"dxgi.dll",
+                               L"opengl32.dll", L"d3d9.dll" };
+    for (int i = 0; i < 5; i++) {
+        std::wstring p = gameDir + L"\\" + hooks[i];
+        if (FileExists(p) && IsReShadeFile(p)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int QuarantineStash(const std::wstring& gameDir, bool weInstalledReShade) {
+    if (!weInstalledReShade) {
+        // 말은 부르는 쪽에서 고른다. 여기서 한 가지로 적으면 틀린 말이 섞인다.
+        return 0;
+    }
+    std::wstring q = QuarantineDirFor(gameDir);
+    if (q.empty()) {
+        return 0;
+    }
+    CreateDirectoryW(q.c_str(), NULL);
+    // 파일 이름은 한글을 쓰지 않는다. 한글판과 영문판이 같은 자리를 보게 해야
+    // 판을 바꿔 쓰셔도 보관해 둔 것을 찾는다.
+    WriteFileBytes(q + L"\\original-path.txt", W2U(gameDir));
+
+    int moved = 0;
+    for (int i = 0; i < (int)(sizeof(QUAR_FILES) / sizeof(QUAR_FILES[0])); i++) {
+        std::wstring src = gameDir + L"\\" + QUAR_FILES[i];
+        if (!FileExists(src)) {
+            continue;
+        }
+        std::wstring dst = q + L"\\" + QUAR_FILES[i];
+        DeleteFileW(dst.c_str());
+        bool cross = false;
+        if (MoveNoCopy(src, dst, &cross)) {
+            moved++;
+            continue;
+        }
+        if (cross) {
+            // 드라이브가 달라도 ini 는 몇 KB 라 복사해도 티가 안 난다.
+            if (CopyFileW(src.c_str(), dst.c_str(), FALSE) && DeleteFileW(src.c_str())) {
+                moved++;
+                continue;
+            }
+        }
+        Log(std::wstring(L"  [경고] 옮기지 못했습니다: ") + QUAR_FILES[i]);
+    }
+
+    for (int i = 0; i < (int)(sizeof(QUAR_DIRS) / sizeof(QUAR_DIRS[0])); i++) {
+        std::wstring src = gameDir + L"\\" + QUAR_DIRS[i];
+        if (!DirExists(src)) {
+            continue;
+        }
+        std::wstring dst = q + L"\\" + QUAR_DIRS[i];
+        RemoveTree(dst);
+        bool cross = false;
+        if (MoveNoCopy(src, dst, &cross)) {
+            moved++;
+            continue;
+        }
+        if (cross) {
+            // 캐시는 드라이브를 건너 복사할 값이 없다. 몇 GB 를 옮겨서 23초를 아끼는 셈이다.
+            // 지우면 다시 깔 때 리세이드가 알아서 다시 굽는다.
+            RemoveTree(src);
+            Log(std::wstring(L"  캐시는 드라이브가 달라 지웠습니다. 다시 깔면 다시 구워집니다: ")
+                + QUAR_DIRS[i]);
+            continue;
+        }
+        Log(std::wstring(L"  [경고] 옮기지 못했습니다: ") + QUAR_DIRS[i]);
+    }
+    return moved;
+}
+
+// 설치 맨 앞에서 부른다. 전에 격리해 둔 것이 있으면 돌려놓는다.
+//
+// 게임 폴더에 같은 이름이 이미 있으면 덮지 않는다. 되돌린 뒤 사용자가 리세이드를
+// 직접 까셨을 수 있고, 그러면 덮는 순간 그분이 새로 맞춘 것이 날아간다.
+static int QuarantineRestore(const std::wstring& gameDir) {
+    std::wstring q = QuarantineDirFor(gameDir);
+    if (q.empty() || !DirExists(q)) {
+        return 0;
+    }
+    int back = 0, kept = 0;
+    for (int i = 0; i < (int)(sizeof(QUAR_FILES) / sizeof(QUAR_FILES[0])); i++) {
+        std::wstring src = q + L"\\" + QUAR_FILES[i];
+        if (!FileExists(src)) {
+            continue;
+        }
+        std::wstring dst = gameDir + L"\\" + QUAR_FILES[i];
+        if (FileExists(dst)) {
+            Log(std::wstring(L"  이미 있어 덮지 않습니다: ") + QUAR_FILES[i]);
+            kept++;
+            continue;
+        }
+        bool cross = false;
+        if (MoveNoCopy(src, dst, &cross)) {
+            back++;
+            continue;
+        }
+        if (cross && CopyFileW(src.c_str(), dst.c_str(), FALSE)) {
+            DeleteFileW(src.c_str());
+            back++;
+        }
+    }
+    for (int i = 0; i < (int)(sizeof(QUAR_DIRS) / sizeof(QUAR_DIRS[0])); i++) {
+        std::wstring src = q + L"\\" + QUAR_DIRS[i];
+        if (!DirExists(src)) {
+            continue;
+        }
+        std::wstring dst = gameDir + L"\\" + QUAR_DIRS[i];
+        if (DirExists(dst)) {
+            kept++;
+            continue;
+        }
+        bool cross = false;
+        if (MoveNoCopy(src, dst, &cross)) {
+            back++;
+            continue;
+        }
+        if (cross) {
+            RemoveTree(src);
+        }
+    }
+    if (back > 0) {
+        wchar_t b[200];
+        swprintf_s(b, L"  전에 쓰시던 설정 %d개를 되돌려 놓았습니다.", back);
+        Log(b);
+    }
+    // 남은 것이 없으면 폴더째 치운다. 원래경로.txt 만 남았을 때도 치운다.
+    {
+        bool any = false;
+        WIN32_FIND_DATAW fd;
+        HANDLE h = FindFirstFileW((q + L"\\*").c_str(), &fd);
+        if (h != INVALID_HANDLE_VALUE) {
+            do {
+                std::wstring n = fd.cFileName;
+                if (n == L"." || n == L".." || n == L"original-path.txt") {
+                    continue;
+                }
+                any = true;
+            } while (!any && FindNextFileW(h, &fd));
+            FindClose(h);
+        }
+        if (!any) {
+            RemoveTree(q);
+        }
+    }
+    return back;
+}
+
+// ini 에서 섹션 하나를 통째로 지운다. 다음 [섹션] 을 만날 때까지다.
+// 애드온이 스스로 써 넣은 [RenoDX.DLSS5] 묶음(약 200줄)을 치울 때 쓴다.
+// 그 애드온은 우리가 넣어서 거기 있던 것이므로 우리가 치운다.
+static bool DelIniSection(const std::wstring& iniPath, const char* wantSec) {
+    const char NL = (char)10;
+    static const char WSCH[] = { 32, (char)9, (char)13, 0 };
+    std::string text = ReadFileBytes(iniPath);
+    if (text.empty()) {
+        return false;
+    }
+    std::vector<std::string> lines;
+    size_t start = 0;
+    while (start <= text.size()) {
+        size_t nl = text.find(NL, start);
+        if (nl == std::string::npos) { lines.push_back(text.substr(start)); break; }
+        lines.push_back(text.substr(start, nl - start + 1));
+        start = nl + 1;
+    }
+    std::string want = std::string("[") + wantSec + "]";
+    std::vector<std::string> out;
+    bool inSec = false, hit = false;
+    for (size_t i = 0; i < lines.size(); i++) {
+        std::string t = lines[i];
+        size_t a = t.find_first_not_of(WSCH);
+        if (a != std::string::npos && t[a] == '[') {
+            inSec = (t.compare(a, want.size(), want) == 0);
+            if (inSec) { hit = true; continue; }
+        }
+        if (inSec) {
+            continue;
+        }
+        out.push_back(t);
+    }
+    if (!hit) {
+        return false;
+    }
+    std::string joined;
+    for (size_t i = 0; i < out.size(); i++) { joined += out[i]; }
+    return WriteFileBytes(iniPath, joined);
+}
+
+// 값에 특정 글자가 든 줄만 지운다. [ADDON] 의
+//   LoadFromDllMain=renodx-dlss5.addon64
+// 처럼 우리 애드온을 가리키는 줄만 걷어내고, 그분이 쓰시던 다른 애드온 줄은 둔다.
+static int DelIniLinesContaining(const std::wstring& iniPath, const char* wantSec,
+                                 const char* needle) {
+    const char NL = (char)10;
+    static const char WSCH[] = { 32, (char)9, (char)13, 0 };
+    std::string text = ReadFileBytes(iniPath);
+    if (text.empty()) {
+        return 0;
+    }
+    std::vector<std::string> lines;
+    size_t start = 0;
+    while (start <= text.size()) {
+        size_t nl = text.find(NL, start);
+        if (nl == std::string::npos) { lines.push_back(text.substr(start)); break; }
+        lines.push_back(text.substr(start, nl - start + 1));
+        start = nl + 1;
+    }
+    std::string want = std::string("[") + wantSec + "]";
+    std::string low = LowerA(needle);
+    std::vector<std::string> out;
+    std::string section;
+    int killed = 0;
+    for (size_t i = 0; i < lines.size(); i++) {
+        std::string t = lines[i];
+        size_t a = t.find_first_not_of(WSCH);
+        if (a != std::string::npos && t[a] == '[') {
+            size_t close = t.find(']', a);
+            section = (close == std::string::npos) ? "" : t.substr(a, close - a + 1);
+            out.push_back(t);
+            continue;
+        }
+        if (section == want && LowerA(t).find(low) != std::string::npos) {
+            killed++;
+            continue;
+        }
+        out.push_back(t);
+    }
+    if (killed == 0) {
+        return 0;
+    }
+    std::string joined;
+    for (size_t i = 0; i < out.size(); i++) { joined += out[i]; }
+    WriteFileBytes(iniPath, joined);
+    return killed;
+}
+
+// 게임 폴더에 커널 안티치트 드라이버가 있는지 본다.
+//
+// 2026-10-28 모던워페어4 에서 찾았다. Call of Duty HQ\Randgrid.sys (12.7MB,
+// 제품명 "Ricochet Driver", 액티비전 서명). 게임을 켜면 서비스로 올라오고
+// 끄면 내려간다. 캠페인만 켜도 올라온다.
+//
+// 게임 폴더에 .sys 가 있다는 것 자체가 커널 드라이버를 싣는다는 뜻이다.
+// 정상 게임은 .sys 를 갖고 다니지 않는다. 이름을 모르는 것까지 잡으려면 이게 맞다.
+static int FindAntiCheatDrivers(const std::wstring& dir, std::wstring& namesOut, int depth) {
+    if (depth < 0) {
+        return 0;
+    }
+    int found = 0;
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW((dir + L"\\*").c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) {
+        return 0;
+    }
+    do {
+        std::wstring n = fd.cFileName;
+        if (n == L"." || n == L"..") {
+            continue;
+        }
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            found += FindAntiCheatDrivers(dir + L"\\" + n, namesOut, depth - 1);
+            continue;
+        }
+        std::wstring ln = LowerW(n);
+        if (ln.size() < 4 || ln.compare(ln.size() - 4, 4, L".sys") != 0) {
+            continue;
+        }
+        if (!namesOut.empty()) {
+            namesOut += L", ";
+        }
+        namesOut += n;
+        found++;
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+    return found;
+}
+
 // 리세이드가 구운 셰이더를 어디에 둘지 정한다.
 //
 // 2026-10-23. 안 적어 주면 리세이드는 윈도우 임시 폴더를 쓴다.
@@ -2422,11 +2949,21 @@ static void SetReShadeCachePath(const std::wstring& iniPath) {
     // 전체 경로까지 똑같을 때만 그대로 둔다. 상대 경로로 적혀 있으면 아래에서 다시 적는다.
     if (low == wantLow) {
         if (!DirExists(want)) { CreateDirectoryW(want.c_str(), NULL); }
-        if (DirExists(want)) {
-            Log(L"  셰이더 캐시 자리는 이미 게임 폴더입니다. 폴더가 있는지만 확인했습니다.");
-        } else {
+        if (!DirExists(want)) {
             Log(L"  [경고] 셰이더 캐시 폴더를 만들지 못했습니다. 임시 폴더를 그대로 씁니다.");
+            return;
         }
+        // 값이 맞아도 줄을 한 번 다시 쓴다. 2026-10-28 라오어.
+        //
+        // 옛 판은 "키 = 값" 으로 적었다. 리세이드는 그 줄에서 키를 못 읽는다.
+        // 그러면 캐시를 **아무 데도 안 쓴다.** 임시 폴더로 가는 것도 아니다.
+        // C 드라이브를 통째로 뒤져서 확인했다 — 효과 458개를 굽고 reshade-* 파일이
+        // 한 개도 새로 안 생겼다. 그래서 켤 때마다 처음부터 다시 구웠다 (81초).
+        // 값이 맞으면 건너뛰고 있어서 옛 줄이 영영 안 고쳐졌다.
+        // SetIniKey 는 이제 "키=값" 으로 쓴다. 한 번 다시 쓰면 고쳐진다.
+        std::string val2 = WideToUtf8(want);
+        SetIniKey(iniPath, "GENERAL", "IntermediateCachePath", val2.c_str());
+        Log(L"  셰이더 캐시 자리는 이미 게임 폴더입니다. 줄 모양만 다시 맞췄습니다.");
         return;
     }
     // 2026-10-23. 폴더를 먼저 만들어야 한다.
@@ -2640,7 +3177,9 @@ static bool FindNeuralDll(const std::wstring& gameDir, std::wstring& out) {
 }
 
 // ================================================================ 설치 / 되돌리기
-struct Job { std::wstring dir; bool restore; };
+// acAsked — 창에서 안티치트를 이미 한 번 여쭤봤는가.
+// 2026-10-28. 온라인 게임 창과 .sys 드라이버 창이 따로 떠서 두 번 물었다.
+struct Job { std::wstring dir; bool restore; bool acAsked; };
 
 static bool HasFxFiles(const std::wstring& dir, int depth) {
     if (depth < 0 || !DirExists(dir)) return false;
@@ -3403,6 +3942,27 @@ static bool ReShadeManagerHasGame(const std::wstring& gameDir) {
     return apps.find(dir) != std::wstring::npos;
 }
 
+// 지금 폴더에 있는 리세이드가 **전에 우리가 넣은 것**인가.
+//
+// 2026-10-28 위쳐3. 되돌리기 없이 두 번 연속 설치하면 둘째 설치 때 리세이드가
+// 이미 있어서 "그대로 둡니다" 로 일찍 돌아간다. 오늘 남의 리세이드를 안 적기로
+// 하면서 push_back 을 뺐더니, 우리가 깐 것까지 안 적히게 됐다.
+// 그 다음 되돌리기가 우리 리세이드를 남의 것으로 보고 두고 갔다.
+//
+// 설치 기록은 설치가 **끝날 때** 새로 쓴다. 그러니 지금은 옛 기록이 아직 디스크에 있다.
+// 거기에 ReShade.ini 나 그 프록시 이름이 적혀 있으면 우리가 넣은 것이다.
+static bool ReShadeWasOurs(const std::wstring& gameDir, const std::wstring& hook) {
+    std::string man = ReadFileBytes(gameDir + L"\\" + MANIFEST);
+    if (man.empty()) {
+        return false;
+    }
+    std::wstring w = LowerW(U2W(man));
+    if (w.find(L"reshade.ini") != std::wstring::npos) {
+        return true;
+    }
+    return w.find(LowerW(hook)) != std::wstring::npos;
+}
+
 static bool InstallReShadeBeside(const std::wstring& gameDir, const std::wstring& optiProxy,
                                  std::vector<std::wstring>& added) {
     // 이미 리세이드가 있으면 손대지 않는다.
@@ -3416,13 +3976,31 @@ static bool InstallReShadeBeside(const std::wstring& gameDir, const std::wstring
             std::wstring p = gameDir + L"\\" + rsHooks[i];
             if (FileExists(p) && IsReShadeFile(p)) { have = rsHooks[i]; break; }
         }
+        // 2026-10-28. 여기 네 군데에서 남의 리세이드를 설치 기록에 적고 있었다.
+        // 기록에 적히면 [되돌리기] 가 지운다. 그래서 원래 리세이드를 쓰시던 분이
+        // 우리 도구를 되돌리면 그분 리세이드까지 같이 사라졌다.
+        //
+        // 10-18 에 "안 적으면 설치 전으로 돌아갔다고 해놓고 리세이드만 남는다" 는
+        // 까닭으로 적기 시작했는데, 그 논리가 틀렸다.
+        // 되돌리기는 설치 전으로 돌리는 것이고,
+        // **설치 전에 리세이드가 있었으면 리세이드가 있는 것이 설치 전이다.**
+        // 지금까지는 설치 전보다 더 지나가 있었다.
+        //
+        // 대신 우리가 그분 ReShade.ini 에 써 넣은 것은 되돌리기가 걷어낸다.
+        // 애드온이 스스로 써 넣은 [ADDON]·[RenoDX.DLSS5] 줄도 같이 걷어낸다.
+        // 그 애드온은 우리가 넣어서 거기 있던 것이기 때문이다.
         if (!have.empty()) {
+            // 전에 우리가 넣은 것이면 이번 기록에도 다시 적는다. 안 적으면 잊어버린다.
+            bool ours = ReShadeWasOurs(gameDir, have);
+            if (ours) {
+                added.push_back(RS_INI);
+            }
             if (FileExists(gameDir + L"\\ReShade.log")) {
-                Log(L"  리세이드는 이미 있고 잘 뜨고 있습니다. 그대로 둡니다.");
-                // 2026-10-18. 그대로 두더라도 기록에는 적는다.
-                // 안 적으면 다음 [되돌리기] 때 이 파일이 남아서,
-                // 설치 전으로 돌아갔다고 해놓고 리세이드만 남는다.
-                added.push_back(have);
+                if (ours) {
+                    Log(L"  리세이드는 전에 우리가 넣은 것입니다. 그대로 두고 기록만 이어 갑니다.");
+                } else {
+                    Log(L"  리세이드는 이미 있고 잘 뜨고 있습니다. 그대로 둡니다. (되돌려도 안 지웁니다)");
+                }
                 return true;
             }
             // 로그가 없다고 바로 틀렸다고 보면 안 된다. 아직 게임을 안 켰을 수도 있다.
@@ -3430,8 +4008,6 @@ static bool InstallReShadeBeside(const std::wstring& gameDir, const std::wstring
             // 그게 리세이드 dll 보다 새것일 때만 "켰는데도 안 떴다"가 성립한다.
             if (!IsNewerThan(gameDir + L"\\OptiScaler.log", gameDir + L"\\" + have)) {
                 Log(L"  리세이드는 이미 있습니다. 아직 게임을 켜지 않으신 것 같아 그대로 둡니다.");
-                Log(L"  게임을 켜고 8 을 눌러도 창이 안 뜨면 설치를 한 번 더 눌러 주세요.");
-                added.push_back(have);
                 return true;
             }
             std::wstring other;
@@ -3439,13 +4015,13 @@ static bool InstallReShadeBeside(const std::wstring& gameDir, const std::wstring
             else if (LowerW(have) == L"d3d12.dll") other = L"d3d11.dll";
             if (other.empty() || FileExists(gameDir + L"\\" + other)) {
                 Log(L"  리세이드는 이미 있습니다. 그대로 둡니다.");
-                added.push_back(have);
                 return true;
             }
             Log(L"  리세이드가 " + have + L" 로 있는데 ReShade.log 가 없습니다. 한 번도 뜨지 못한 것입니다.");
             Log(L"  이름이 맞지 않는 것으로 보고 " + other + L" 로 옮겨 봅니다.");
+            // 옮긴 것도 기록에 안 적는다. 적으면 되돌리기가 그분 리세이드를 지운다.
+            // 이름만 바뀐 채로 남는데, 그래야 그분 리세이드가 계속 뜬다. 그게 목적이었다.
             if (MoveFileW((gameDir + L"\\" + have).c_str(), (gameDir + L"\\" + other).c_str())) {
-                added.push_back(other);
                 Log(L"  옮겼습니다. 게임을 켜고 " + HotKeyName(HK_RS_OVERLAY) + L" 키를 눌러 보세요.");
             } else {
                 wchar_t eb[200];
@@ -3553,6 +4129,13 @@ static bool InstallReShadeBeside(const std::wstring& gameDir, const std::wstring
         // 효과 파일을 886개 넣어드리는데 이 값이 0 이면 꺼둔 효과까지 전부 읽는다.
         // 화면을 다시 만드는 자리마다 그만큼 멈춘다. 1 이면 켜 둔 것만 읽는다.
         // PerformanceMode 는 건드리지 않는다. 그걸 켜면 창에서 값을 못 바꾼다.
+        //
+        // 2026-10-28. 이미 있어도 설치 기록에는 적는다.
+        // 여기까지 왔다는 것은 리세이드를 우리가 넣는다는 뜻이다 (원래 있었으면
+        // 위에서 벌써 돌아갔다). 그런데 되돌리기가 격리해 둔 ini 를 돌려놓고 나면
+        // 이 갈래로 들어온다. 안 적으면 다음 되돌리기가 "남의 리세이드" 로 잘못 보고
+        // 격리를 건너뛴다. 그러면 ini 와 셰이더가 게임 폴더에 남는다.
+        added.push_back(RS_INI);
         Log(L"  ReShade.ini 는 이미 있어 그대로 둡니다. 창 여는 키만 맞췄습니다: "
             + HotKeyName(HK_RS_OVERLAY));
     } else if (CopyFileW((rsSrc + L"\\" + RS_INI).c_str(), iniDst.c_str(), TRUE)) {
@@ -3670,6 +4253,10 @@ static bool InstallFeeder(const std::wstring& gameDir, std::vector<std::wstring>
                 sprintf_s(kb, "%d,0,0,0", HotKeyVk(HK_RS_OVERLAY));
                 SetIniKey(iniDst, "INPUT", "KeyOverlay", kb);
             }
+            // 2026-10-28. 까닭은 위 InstallReShadeBeside 와 같다.
+            // 격리본을 돌려놓은 뒤 이 갈래로 들어오므로, 안 적으면 다음 되돌리기가
+            // 우리 것을 남의 것으로 본다.
+            added.push_back(RS_INI);
                 Log(L"  ReShade.ini 는 이미 있어 그대로 둡니다. 창 여는 키만 맞췄습니다: "
                     + HotKeyName(HK_RS_OVERLAY));
             } else if (CopyFileW((rsSrc + L"\\" + RS_INI).c_str(), iniDst.c_str(), TRUE)) {
@@ -3998,10 +4585,43 @@ static DWORD WINAPI WorkThread(LPVOID param) {
             }
         }
 
+        // 기록이 없을 때는 참으로 둔다. 옛 판이 기록 없이 넣은 리세이드를 치워야 한다.
+        // 기록이 있을 때만 아래에서 다시 정한다.
+        bool weInstalledReShade = true;
+
         std::string man = ReadFileBytes(gameDir + L"\\" + MANIFEST);
         if (man.empty()) {
             Log(L"설치 기록이 없습니다. 이 게임에는 이 프로그램으로 설치한 적이 없습니다.");
         } else {
+            // ───── 우리가 리세이드를 깔았는가. **파일을 지우기 전에** 판단한다.
+            //
+            // 2026-10-28 라오어에서 걸렸다. 처음에는 "설치 기록에 ReShade.ini 가
+            // 적혀 있나" 로만 봤는데, 옛 판으로 까신 게임은 그 줄이 없을 수 있다.
+            // 설치할 때 ReShade.ini 가 이미 있으면 "그대로 둡니다" 갈래로 가면서
+            // 기록에 안 적었기 때문이다. 그래서 우리가 깐 리세이드를 남의 것으로 보고
+            // 격리를 건너뛰었다. 리세이드 본체(d3d12.dll)는 기록에 있어서 지워졌는데
+            // ini·프리셋·캐시·셰이더는 남아, 리세이드 없이 설정만 남는 모양이 됐다.
+            //
+            // 그래서 기록에 적힌 프록시 자리를 실제로 열어 본다. 그 파일이 리세이드면
+            // 우리가 넣은 것이다. 남의 리세이드는 이제 기록에 안 적히기 때문이다.
+            // 아래 매니페스트 루프가 그 파일들을 지우므로 반드시 여기서 먼저 본다.
+            weInstalledReShade = (U2W(man).find(L"ReShade.ini") != std::wstring::npos);
+            if (!weInstalledReShade) {
+                const wchar_t* rsHooks[] = { L"d3d11.dll", L"d3d12.dll", L"dxgi.dll",
+                                             L"opengl32.dll", L"d3d9.dll" };
+                std::wstring lowMan = LowerW(U2W(man));
+                for (int i = 0; i < 5; i++) {
+                    if (lowMan.find(LowerW(rsHooks[i])) == std::wstring::npos) {
+                        continue;
+                    }
+                    std::wstring p2 = gameDir + L"\\" + rsHooks[i];
+                    if (FileExists(p2) && IsReShadeFile(p2)) {
+                        weInstalledReShade = true;
+                        break;
+                    }
+                }
+            }
+
             int n = 0, fail = 0;
             std::wstring w = U2W(man);
             size_t p = 0;
@@ -4100,6 +4720,56 @@ static DWORD WINAPI WorkThread(LPVOID param) {
             // 안의 파일만 지우면 빈 폴더가 남는다. 비어 있을 때만 지워진다.
             RemoveDirectoryW((gameDir + L"\\host64").c_str());
             RemoveTree(backup);
+
+            // ───── 격리. 2026-10-28 대표님 설계.
+            // weInstalledReShade 는 위에서, 파일을 지우기 전에 정해 두었다.
+            if (weInstalledReShade) {
+                int q = QuarantineStash(gameDir, true);
+                if (q > 0) {
+                    wchar_t qb[260];
+                    swprintf_s(qb, L"설정 %d개를 따로 보관했습니다. 다시 까실 때 그대로 돌려 드립니다.", q);
+                    Log(qb);
+                    Log(L"  보관 자리: " + QuarantineDirFor(gameDir));
+                }
+            } else {
+                // 우리가 리세이드를 안 넣은 경우인데, 여기도 둘로 갈린다.
+                // 2026-10-28 붉은사막. 체크를 끄고 까신 게임에 리세이드가 아예 없는데도
+                // "원래 쓰시던 것이라" 라고 적고 있었다. 있지도 않은 것을 가리킨 셈이다.
+                if (HasReShadeDll(gameDir)) {
+                    Log(L"  리세이드는 원래 쓰시던 것이라 ini 와 캐시를 그대로 둡니다.");
+                } else {
+                    Log(L"  이 게임에는 리세이드를 넣지 않았습니다. 손댈 것이 없습니다.");
+                }
+
+                // 리세이드는 그분 것이라 안 건드린다. 그런데 그 ini 안에는 우리가
+                // 넣은 애드온이 써 놓은 줄이 남아 있다. 애드온 파일은 방금 지웠으니
+                // 그 줄을 두면 리세이드가 없는 파일을 찾아 오류 126 을 낸다.
+                // 2026-10-28 새벽 레데리2에서 실제로 난 일이다.
+                std::wstring ini = gameDir + L"\\" + RS_INI;
+                if (FileExists(ini)) {
+                    // [ADDON] 의 **줄만** 뺀다. [RenoDX.DLSS5] 묶음은 그대로 둔다.
+                    //
+                    // 2026-10-28. 한때 그 묶음도 지우게 짰다가 거뒀다.
+                    // 레데리2 ReShade.ini 의 [RenoDX.DLSS5] 에는 대표님이 맞춰 두신
+                    // 값이 약 200줄 들어 있다 (NRLocalStructure=2, NRPaperWhiteScale=2.5375 …).
+                    // 지우면 다시 깔 때 애드온이 기본값으로 새로 만들어 버린다.
+                    // "가" 갈래는 파일째 격리하니 값이 돌아오지만, "나" 갈래는 파일을
+                    // 안 가져가므로 여기서 지우면 영영 사라진다.
+                    //
+                    // 오류 126 을 낸 것은 묶음이 아니라 LoadFromDllMain 한 줄이었다.
+                    // 애드온이 없는 묶음은 리세이드가 그냥 무시한다. 둬도 해가 없다.
+                    int cut = 0;
+                    cut += DelIniLinesContaining(ini, "ADDON", "dlss5-feed");
+                    cut += DelIniLinesContaining(ini, "ADDON", "renodx-");
+                    if (cut > 0) {
+                        wchar_t cb[220];
+                        swprintf_s(cb, L"쓰시던 ReShade.ini 는 그대로 두고, 우리가 넣은 줄 %d군데만 걷어냈습니다.", cut);
+                        Log(cb);
+                    }
+                }
+                QuarantineStash(gameDir, false);
+            }
+
             Log(L"남은 파일까지 정리했습니다. 게임 폴더가 설치 전 상태로 돌아갔습니다.");
             wchar_t b[200];
             if (fail > 0) swprintf_s(b, L"파일 %d개를 되돌렸고, %d개는 지우지 못했습니다.", n, fail);
@@ -4110,7 +4780,7 @@ static DWORD WINAPI WorkThread(LPVOID param) {
         Status(L"되돌리기가 제대로 됐는지 확인하는 중입니다...");
         {
             std::wstring left;
-            int rem = CheckRevertLeftovers(gameDir, left);
+            int rem = CheckRevertLeftovers(gameDir, left, weInstalledReShade);
             Log(L"");
             if (rem == 0) {
                 Log(L"───── 확인: 넣었던 것이 모두 사라졌습니다");
@@ -4137,6 +4807,54 @@ static DWORD WINAPI WorkThread(LPVOID param) {
     }
 
     Log(L"───── 설치를 시작합니다");
+
+    // ── 커널 안티치트가 있는 게임인지 먼저 본다. 2026-10-28.
+    //
+    // 모던워페어4 에서 찾았다. Call of Duty HQ\Randgrid.sys (12.7MB,
+    // 제품명 "Ricochet Driver", 액티비전 서명). 게임을 켜면 서비스로 올라오고
+    // 끄면 내려간다. 캠페인만 켜도 올라온다.
+    //
+    // 옵티스케일러 README 가 직접 적어 두었다 — "온라인 게임에 쓰지 마십시오.
+    // 안티치트를 건드려 밴을 당할 수 있습니다." EAC·배틀아이가 붙은 게임은
+    // 프록시 dll 을 보면 아예 실행을 거부하기도 한다.
+    //
+    // 막지는 않는다. 알려 드리고 고르시게 한다. 기본값은 "아니오" 다.
+    // 게임 폴더에 .sys 가 있다는 것 자체가 커널 드라이버를 싣는다는 뜻이다.
+    // 정상 게임은 .sys 를 갖고 다니지 않는다. 이름을 모르는 것까지 이렇게 잡는다.
+    {
+        std::wstring acNames;
+        int ac = FindAntiCheatDrivers(job->dir, acNames, 2);
+        if (ac > 0 && (job->acAsked || AllowOnlineOverride())) {
+            // 창에서 이미 한 번 여쭤봤다. 또 묻지 않는다.
+            Log(L"[주의] 이 게임 폴더에 커널 안티치트 드라이버가 있습니다: " + acNames);
+            Log(L"  이미 여쭤봐서 그냥 갑니다.");
+            ac = 0;
+        }
+        if (ac > 0) {
+            std::wstring NLa(1, (wchar_t)10);
+            Log(L"[주의] 이 게임 폴더에 커널 안티치트 드라이버가 있습니다: " + acNames);
+            std::wstring m;
+            m += L"이 게임에는 커널 안티치트가 들어 있습니다." + NLa + NLa;
+            m += acNames + NLa + NLa;
+            m += L"DLSS 5 는 게임에 dll 을 끼워 넣는 방식입니다." + NLa;
+            m += L"안티치트가 그것을 잡으면 계정이나 PC 가 막힐 수 있습니다." + NLa + NLa;
+            m += L"싱글 캠페인만 하셔도 드라이버는 같이 올라옵니다." + NLa;
+            m += L"실행 파일이 나뉘어 있어도 안티치트는 나뉘지 않습니다." + NLa + NLa;
+            m += L"그래도 설치할까요?";
+            int r = MessageBoxW(g_hWnd, m.c_str(), L"안티치트가 있는 게임입니다",
+                                MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2 | MB_TOPMOST);
+            if (r != IDYES) {
+                Log(L"[중단] 안티치트가 있어 설치하지 않았습니다. 아무것도 건드리지 않았습니다.");
+                Status(L"설치하지 않았습니다");
+                delete job; PostMessageW(g_hWnd, WM_DONE, 0, 0); return 0;
+            }
+            Log(L"  설치를 계속하기로 하셨습니다.");
+        }
+    }
+
+    // ── 전에 되돌리면서 따로 보관해 둔 설정이 있으면 먼저 돌려놓는다. 2026-10-28.
+    // 게임 폴더에 같은 이름이 이미 있으면 덮지 않는다.
+    QuarantineRestore(gameDir);
 
     // ── 어느 방식으로 설치할지 정한다
     bool modeB = false, modeBVulkan = false;
@@ -4703,11 +5421,19 @@ static DWORD WINAPI WorkThread(LPVOID param) {
         if (ReShadeManagerHasGame(gameDir)) {
             Log(L"※ 리세이드는 리세이드 매니저가 이미 들고 있어 우리 것을 넣지 않았습니다.");
             Log(L"   창 여는 키는 매니저에서 정하신 그대로입니다.");
+        } else if (SendMessageW(g_hRs, BM_GETCHECK, 0, 0) != BST_CHECKED) {
+            // 2026-10-28 붉은사막. 체크를 끄고 까셨는데 마지막 안내는
+            // "리세이드도 같이 넣었습니다" 라고 적고 있었다. 앞에서는
+            // "리세이드는 넣지 않습니다" 라고 해 놓고 끝에서 뒤집었다.
+            // 매니저 쪽은 10-23 에 고쳤는데 체크 끈 쪽이 남아 있었다.
+            Log(L"※ 리세이드는 넣지 않았습니다. (창에서 끄셨습니다)");
         } else {
+            // 2026-10-28. "창이 안 뜨면 한 번 더 누르세요" 안내를 뺐다.
+            // 10-09 에 넣은 것인데, 10-18 에 실행 파일과 폴더를 보고 d3d11/d3d12 를
+            // 가리는 코드가 들어오면서 쓸모가 없어졌다. 1.0.3.4 전수조사에서 열네 게임이
+            // 전부 한 번에 통과했다. 그리고 이제 덮어 깔기를 막아서 그 길 자체가 없다.
             Log(L"※ 리세이드도 같이 넣었습니다. " + HotKeyName(HK_RS_OVERLAY)
                 + L" 키로 열립니다. (DLSS 5 창은 " + HotKeyName(HK_DLSS_PANEL) + L" 입니다)");
-            Log(L"   8 을 눌러도 창이 안 뜨면 [DLSS 5 설치]를 한 번 더 누르세요.");
-            Log(L"   게임마다 읽어 들이는 파일 이름이 달라서, 다른 이름으로 바꿔 넣습니다.");
         }
         Log(L"※ 프레임이 모자라면 " + HotKeyName(HK_DLSS_PANEL) + L" 창에서 Model resolution 을 0.7 로 내리세요.");
         // 스트림라인 폴더를 넣었다는 건 이 게임이 DLSS 프레임 생성을 할 줄 안다는 뜻이다.
@@ -4918,6 +5644,59 @@ static void ApplyHotKeys(const std::wstring& gameDir, bool modeB) {
     }
 }
 
+// 고른 게임이 지금 깔려 있는가. 설치 기록이 있으면 깔려 있는 것이다.
+//
+// 설치 자리는 게임마다 다르다. 최상위일 수도 있고 bin\x64_dx12 · Binaries\Win64 ·
+// Bin\Win64MasterMasterSteamPGO · sp26 일 수도 있다. 그래서 되돌리기와 똑같이
+// ResolveExeDir 로 자리를 잡고, 거기 없으면 네 단계까지 판다.
+// 2026-10-28. 최상위만 보다가 깔린 게임을 "안 깔림" 으로 두 번 읽었다.
+static bool GameHasInstall(const std::wstring& gameRoot) {
+    if (gameRoot.empty()) {
+        return false;
+    }
+    std::wstring dir = ResolveExeDir(gameRoot);
+    if (FileExists(dir + L"\\" + MANIFEST)) {
+        return true;
+    }
+    std::wstring found;
+    if (FindFileDeep(gameRoot, MANIFEST, 4, found)) {
+        return true;
+    }
+    // 기록이 없어도 우리 것이 남아 있으면 되돌리기로 치울 수 있어야 한다.
+    // 옛 판이 기록 없이 넣은 경우다 (2026-10-18 프래그마타).
+    const wchar_t* traces[] = { L"OptiScaler.dll", L"nvngx_dlssnr.dll",
+                                L"dlss5-feed.addon64", L"renodx-dlss5.addon64" };
+    for (int i = 0; i < 4; i++) {
+        if (FileExists(dir + L"\\" + traces[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// 설치 여부에 따라 두 단추를 손본다. 2026-10-28 대표님 지시.
+//
+// [되돌리기] 는 되돌릴 것이 없으면 끈다. 눌러 봐야 "설치한 적이 없습니다" 만 나온다.
+// 깔려 있으면 [DLSS 5 설치] 를 끈다. **되돌린 뒤에만 깔 수 있다.** 2026-10-28 대표님 결정.
+//
+// 덮어 깔기를 막으면 오늘 하루에 셋이나 나온 사고가 한꺼번에 없어진다.
+//   1) 둘째 설치가 첫 설치의 파일을 "게임이 원래 갖고 있던 것" 으로 백업한다
+//   2) 리세이드가 이미 있어 일찍 돌아가느라 설치 기록에 안 적혀 주인을 잊는다
+//   3) 설치 기록이 새로 쓰이면서 먼젓번에 넣은 파일이 주인 없는 파일이 된다
+// 되돌리기가 설정을 격리해 두었다가 돌려주므로 사용자가 잃는 것은 없다.
+static void UpdateJobButtons(const std::wstring& gameRoot) {
+    if (!g_hInstall || !g_hRestore) { return; }
+    if (gameRoot.empty()) {
+        EnableWindow(g_hInstall, FALSE);
+        EnableWindow(g_hRestore, FALSE);
+        SetWindowTextW(g_hInstall, L"DLSS 5 설치");
+        return;
+    }
+    bool on = GameHasInstall(gameRoot);
+    EnableWindow(g_hInstall, on ? FALSE : TRUE);
+    EnableWindow(g_hRestore, on ? TRUE : FALSE);
+}
+
 static void UpdateReShadeCheckbox(const std::wstring& gameRoot) {
     if (!g_hRs) { return; }
     bool mustHave = false;
@@ -4945,10 +5724,12 @@ static void SyncReShadeCheckboxToSelection() {
     int sel = (int)SendMessageW(g_hList, LB_GETCURSEL, 0, 0);
     if (sel < 0 || sel >= (int)g_games.size()) {
         UpdateReShadeCheckbox(L"");
+        UpdateJobButtons(L"");
         LoadHotKeys(L"");
         return;
     }
     UpdateReShadeCheckbox(g_games[sel].dir);
+    UpdateJobButtons(g_games[sel].dir);
     // 그 게임이 쓰던 키를 칸에 띄운다. 실행 파일이 하위 폴더에 있는 게임이
     // 있어서, 설치할 때와 같은 자리를 봐야 한다.
     LoadHotKeys(ResolveExeDir(g_games[sel].dir));
@@ -5117,6 +5898,57 @@ static void StartJob(bool restore) {
     }
 
     std::wstring online = FindOnlineGame(g_games[sel].dir);
+
+    // 온라인 게임 가운데 콜 오브 듀티만 푼다. 2026-10-28 대표님 결정.
+    //
+    // 이름표로 풀지 않는다. 캠페인 실행 파일이 **실제로 따로 있을 때만** 푼다.
+    //   Call of Duty HQ\sp26\sp26-cod.exe   캠페인. 여기에만 넣는다
+    //   Call of Duty HQ\cod.exe             멀티. 건드리지 않는다
+    // 워존처럼 캠페인이 없는 것은 이 길로 못 온다. 다른 온라인 게임은 cod.exe 가
+    // 없으니 애초에 걸리지 않는다. 푸는 범위가 저절로 좁혀진다.
+    //
+    // 2026-10-28 모던워페어4 에서 한 바퀴 돌려 보았다. 캠페인이 떴고 신경망이
+    // 돌았고 (79fps, 4.08ms) 되돌리기도 깨끗했다. 10-21 제보의 0x00001337 은
+    // 안 났다. 그때 판은 캠페인 폴더를 몰라서 멀티 런처 옆에 깔았을 것으로 본다.
+    // 다만 **게임이 켜졌다는 것이 밴을 안 당한다는 뜻은 아니다.** 리코셰는
+    // 서버 쪽에서도 보고, 한참 뒤에 무더기로 처리하기도 한다.
+    std::wstring codSp;
+    bool codCampaign = !online.empty() && FindCodCampaignDir(g_games[sel].dir, codSp);
+    bool acAsked = false;      // 여기서 여쭤봤으면 설치 쪽에서 또 묻지 않는다
+
+    if (!online.empty() && !restore && (codCampaign || AllowOnlineOverride())) {
+        std::wstring m;
+        if (codCampaign) {
+            AddLogLine((L"캠페인에만 넣습니다: " + codSp).c_str());
+            m += L"이 게임은 온라인 게임입니다. 캠페인에만 넣습니다.\n\n";
+            m += L"  찾은 것: " + online + L"\n";
+            m += L"  넣는 자리: " + codSp + L"\n\n";
+            m += L"멀티플레이어가 도는 자리는 건드리지 않습니다.\n";
+            m += L"그래도 안티치트 드라이버는 캠페인에도 같이 올라옵니다.\n";
+            m += L"2026-10-21 제보: 설치 뒤 게임이 0x00001337 로 스스로 꺼졌습니다.\n";
+            m += L"계정이 영구 정지될 수 있습니다.\n\n";
+            m += L"멀티플레이어를 하시기 전에 반드시 [되돌리기] 를 누르세요.\n\n";
+            m += L"그래도 설치할까요?";
+        } else {
+            AddLogLine((L"[시험] 온라인 게임 차단을 건너뜁니다: " + online).c_str());
+            m += L"온라인 게임 차단을 명령줄로 건너뛰는 중입니다.\n\n";
+            m += L"  찾은 것: " + online + L"\n\n";
+            m += L"이 게임의 안티치트는 끼어든 dll 을 잡아냅니다.\n";
+            m += L"2026-10-21 제보: 설치 뒤 게임이 0x00001337 로 스스로 꺼졌습니다.\n";
+            m += L"계정이 영구 정지될 수 있습니다.\n\n";
+            m += L"그래도 설치할까요?";
+        }
+        int a = MessageBoxW(g_hWnd, m.c_str(),
+            codCampaign ? L"캠페인에만 넣습니다" : L"차단을 건너뜁니다",
+            MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2 | MB_TOPMOST);
+        if (a != IDYES) {
+            AddLogLine(L"[중단] 차단 건너뛰기를 취소하셨습니다.");
+            EnableWindow(g_hInstall, TRUE); EnableWindow(g_hRestore, TRUE); EnableWindow(g_hPick, TRUE);
+            g_busy = 0; return;
+        }
+        acAsked = true;
+        online.clear();
+    }
     if (!online.empty() && !restore) {
         MessageBoxW(g_hWnd,
         (L"이 게임은 온라인 게임입니다.\n\n"
@@ -5146,7 +5978,7 @@ static void StartJob(bool restore) {
 
     EnableWindow(g_hInstall, FALSE); EnableWindow(g_hRestore, FALSE);
     EnableWindow(g_hPick, FALSE);
-    Job* job = new Job{ g_games[sel].dir, restore };
+    Job* job = new Job{ g_games[sel].dir, restore, acAsked };
     CreateThread(NULL, 0, WorkThread, job, 0, NULL);
 }
 
@@ -5265,11 +6097,20 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     }
     case WM_LOG:    { wchar_t* s = (wchar_t*)lp; AddLogLine(s); free(s); return 0; }
     case WM_STATUS: { wchar_t* s = (wchar_t*)lp; SetWindowTextW(g_hStatus, s); free(s); return 0; }
-    case WM_DONE:
+    case WM_DONE: {
         g_busy = 0;
-        EnableWindow(g_hInstall, TRUE); EnableWindow(g_hRestore, TRUE);
         EnableWindow(g_hPick, TRUE);
+        // 방금 깔았거나 되돌렸으니 단추 상태를 다시 본다. 2026-10-28.
+        // 목록은 LISTBOX 다. CB_GETCURSEL 은 콤보박스용이라 엉뚱한 값이 온다. (2026-10-28)
+        int sel = (int)SendMessageW(g_hList, LB_GETCURSEL, 0, 0);
+        if (sel >= 0 && sel < (int)g_games.size()) {
+            UpdateJobButtons(g_games[sel].dir);
+        } else {
+            EnableWindow(g_hInstall, TRUE);
+            EnableWindow(g_hRestore, TRUE);
+        }
         return 0;
+    }
     case WM_CTLCOLORSTATIC: {
         HDC dc = (HDC)wp;
         if ((HWND)lp == g_hLog) {            // 읽기 전용 EDIT 은 배경을 칠해 줘야 스크롤 자국이 안 남는다
