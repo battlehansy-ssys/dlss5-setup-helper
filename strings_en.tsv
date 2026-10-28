@@ -678,3 +678,21 @@ DLSS 5 는 게임에 dll 을 끼워 넣는 방식입니다.|||DLSS 5 works by pu
 DLSS 5 다시 설치|||Install DLSS 5 again
   리세이드는 전에 우리가 넣은 것입니다. 그대로 두고 기록만 이어 갑니다.|||  ReShade is one we installed earlier. Leaving it and carrying the record forward.
   셰이더 캐시 자리는 이미 게임 폴더입니다. 줄 모양만 다시 맞췄습니다.|||  The shader cache already points at the game folder. Only the line format was rewritten.
+  그대로 두면 Insert 가 겹쳐서 DLSS 5 창이 안 열립니다.|||  Left alone, Insert collides and the DLSS 5 panel will not open.
+  리세이드 검색 경로를 절대 경로로 바꿨습니다. (RE 엔진은 _storage_ 에서 돌아갑니다)|||  Rewrote ReShade's search paths as absolute. (RE Engine runs from _storage_)
+  리세이드 설정을 _storage_ 에도 넣었습니다.|||  Placed ReShade's settings in _storage_ as well.
+  지난 판이 꺼 두었던 REFramework 을 되살렸습니다.|||  Re-enabled the REFramework that an earlier build had switched off.
+[경고] 동봉한 REFramework 을 찾지 못했습니다. (data\\reframework\\dinput8.dll)|||[Warning] Could not find the bundled REFramework. (data\\reframework\\dinput8.dll)
+  REFramework 을 넣었습니다. (dinput8.dll) 만드신 분은 praydog 님입니다.|||  Installed REFramework. (dinput8.dll) It was made by praydog.
+[경고] REFramework 을 넣지 못했습니다. 게임이 켜지다 꺼질 수 있습니다.|||[Warning] Could not install REFramework. The game may die while starting.
+  dinput8.dll 이 이미 있는데 REFramework 이 아닙니다. 건드리지 않습니다.|||  A dinput8.dll is already here and it is not REFramework. Leaving it alone.
+  갖고 계시던 REFramework 이 더 오래된 판이라 동봉한 것으로 바꿨습니다.|||  Your REFramework was an older build, so it was replaced with the bundled one.
+  원래 파일은 백업했습니다. [되돌리기] 를 누르면 돌려놓습니다.|||  The original was backed up. [Restore] puts it back.
+  REFramework 을 바꾸지 못해 그대로 둡니다.|||  Could not replace REFramework, so it is left as it is.
+  REFramework 이 이미 있습니다. 그대로 둡니다.|||  REFramework is already here. Leaving it as it is.
+  게임이 업데이트된 뒤 안 켜지면 REFramework 을 새로 받으십시오.|||  If the game stops working after an update, download REFramework again.
+  [경고] _storage_ 를 만들지 못했습니다. 리세이드가 셰이더를 못 찾을 수 있습니다.|||  [Warning] Could not create _storage_. ReShade may not find its effects.
+캡콤 RE 엔진에 안티모딩이 걸린 게임입니다. REFramework 이 있어야 돌아갑니다.|||This is a Capcom RE Engine game with anti-modding. It needs REFramework to run.
+  다른 모드가 쓰는 파일로 보입니다. 게임이 안 켜지면 그것부터 빼 보십시오.|||  It looks like another mod uses that file. If the game will not start, remove it first.
+  REFramework 창 여는 키를 Delete 로 옮겼습니다. (|||  Moved REFramework's menu key to Delete. (
+  받는 곳: https://github.com/praydog/REFramework-nightly/releases|||  Get it here: https://github.com/praydog/REFramework-nightly/releases

@@ -18,7 +18,7 @@
 
 // ================================================================ 설정
 // 버전 규칙: 아래 OPTI_URL(내려받기 주소)을 바꿀 때마다 맨 뒷자리를 1 올린다.
-static const wchar_t* APP_VER  = L"1.0.3.5";
+static const wchar_t* APP_VER  = L"1.0.3.6";
 static const wchar_t* OPTI_VER = L"F5-DLSSNR v0.1.33";
 // 이 판을 만들 때 전수조사에 쓴 드라이버. 창 위에 같이 적어서
 // 받으신 분이 자기 것과 바로 견줄 수 있게 한다.
@@ -1815,6 +1815,119 @@ static bool IsREFramework(const std::wstring& path) {
     return name && who;
 }
 
+// PE 헤더에 박힌 링크 시각. 파일을 복사하면 날짜는 바뀌지만 이건 안 바뀐다.
+// REFramework 두 개 중 어느 쪽이 새것인지 가릴 때 쓴다.
+// 2026-10-29 확인: 나이틀리 01433 이 1792557424 (2026-10-21 04:37:04 UTC) 로
+// 깃허브 공개 시각과 같았다.
+static DWORD PeLinkTime(const std::wstring& path) {
+    HANDLE h = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL,
+                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE) { return 0; }
+    DWORD got = 0, out = 0;
+    char mz[2] = {0};
+    LONG pe = 0;
+    char sig[4] = {0};
+    if (ReadFile(h, mz, 2, &got, NULL) && got == 2 && mz[0] == 'M' && mz[1] == 'Z') {
+        if (SetFilePointer(h, 0x3C, NULL, FILE_BEGIN) != INVALID_SET_FILE_POINTER
+            && ReadFile(h, &pe, 4, &got, NULL) && got == 4 && pe > 0) {
+            if (SetFilePointer(h, pe, NULL, FILE_BEGIN) != INVALID_SET_FILE_POINTER
+                && ReadFile(h, sig, 4, &got, NULL) && got == 4
+                && sig[0] == 'P' && sig[1] == 'E' && sig[2] == 0 && sig[3] == 0) {
+                // IMAGE_FILE_HEADER: Machine(2) NumberOfSections(2) TimeDateStamp(4)
+                char skip[4] = {0};
+                if (ReadFile(h, skip, 4, &got, NULL) && got == 4) {
+                    if (!ReadFile(h, &out, 4, &got, NULL) || got != 4) { out = 0; }
+                }
+            }
+        }
+    }
+    CloseHandle(h);
+    return out;
+}
+
+// 캡콤 RE 엔진 게임인가. 게임 데이터 묶음 이름으로 본다.
+// 바이오하자드 RE4 에도 레퀴엠에도 re_chunk_000.pak 이 있다.
+// 이름으로 찾는 것이 아니라 파일로 찾으므로 새 게임이 나와도 맞는다.
+static bool IsReEngineGame(const std::wstring& dir) {
+    if (FileExists(dir + L"\\re_chunk_000.pak")) { return true; }
+    size_t cut = dir.find_last_of(L"\\");
+    if (cut == std::wstring::npos) { return false; }
+    return FileExists(dir.substr(0, cut) + L"\\re_chunk_000.pak");
+}
+
+// 실행 파일에 데누보가 들어 있는가.
+//
+// 2026-10-29 레퀴엠. 캡콤 안티모딩이 걸린 게임은 우리 것만 넣으면 정확히
+// 368프레임에서 게임이 제 코드 안에서 죽는다 (ILLEGAL_INSTRUCTION, 콜스택 없음).
+// 자리를 dxgi 에서 winmm 으로 옮겨도 같은 주소에서 죽는다. REFramework 이
+// 그걸 뚫어 줘야 넘어간다. 옵티스케일러 공식 위키에도 그렇게 적혀 있다.
+//
+// 가르는 자: RE4 에는 데누보가 없고 REFramework 없이 된다.
+//            레퀴엠·프래그마타에는 있고 REFramework 이 있어야 한다.
+// 표본이 셋뿐이라 단정은 아니다. 틀리면 여기를 고친다.
+static bool ExeHasDenuvo(const std::wstring& path) {
+    HANDLE h = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL,
+                           OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+    if (h == INVALID_HANDLE_VALUE) { return false; }
+    std::vector<char> buf(1 << 20);
+    std::string tail;
+    DWORD got = 0;
+    bool hit = false;
+    while (!hit && ReadFile(h, &buf[0], (DWORD)buf.size(), &got, NULL) && got > 0) {
+        std::string chunk = tail + std::string(&buf[0], got);
+        if (chunk.find("DENUVO") != std::string::npos) { hit = true; }
+        tail = (chunk.size() > 16) ? chunk.substr(chunk.size() - 16) : chunk;
+    }
+    CloseHandle(h);
+    return hit;
+}
+
+// 이 게임은 REFramework 이 있어야 하는가.
+// RE 엔진이면서 데누보가 걸린 게임만 그렇다.
+static bool NeedsREFramework(const std::wstring& gameDir, const std::wstring& exe) {
+    if (!IsReEngineGame(gameDir)) { return false; }
+    if (exe.empty()) { return false; }
+    return ExeHasDenuvo(exe);
+}
+
+// REFramework 창 여는 키를 Insert 에서 Delete 로 옮긴다.
+//
+// 둘 다 Insert 라 그대로 두면 Insert 를 눌러도 REFramework 창만 열리고
+// DLSS 5 창이 안 열린다. 옵티스케일러 위키도 같은 말을 한다.
+//
+// 설정 파일 이름이 게임마다 다르다 (레퀴엠은 re2_fw_config.txt 였다).
+// 그래서 이름을 정해 놓지 않고 *_fw_config.txt 를 찾아서 고친다.
+// 파일은 게임을 한 번 켜야 생긴다. 없으면 아무것도 안 한다 — 그때는
+// 사용자가 창에서 직접 바꾸시면 된다.
+// 45 = VK_INSERT, 46 = VK_DELETE.
+static bool SetREFrameworkMenuKey(const std::wstring& gameDir) {
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW((gameDir + L"\\*_fw_config.txt").c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) { return false; }
+    bool done = false;
+    do {
+        std::wstring p = gameDir + L"\\" + fd.cFileName;
+        std::string txt = ReadFileBytes(p);
+        if (txt.empty()) { continue; }
+        const std::string key = "REFrameworkConfig_MenuKey_V2=";
+        size_t at = txt.find(key);
+        if (at == std::string::npos) { continue; }
+        size_t vs = at + key.size();
+        size_t ve = txt.find_first_of("\r\n", vs);
+        if (ve == std::string::npos) { ve = txt.size(); }
+        if (txt.compare(vs, ve - vs, "46") == 0) { done = true; continue; }
+        txt = txt.substr(0, vs) + "46" + txt.substr(ve);
+        if (WriteFileBytes(p, txt)) {
+            Log(std::wstring(L"  REFramework 창 여는 키를 Delete 로 옮겼습니다. (") +
+                fd.cFileName + L")");
+            Log(L"  그대로 두면 Insert 가 겹쳐서 DLSS 5 창이 안 열립니다.");
+            done = true;
+        }
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+    return done;
+}
+
 // 설치 방식 판단용. exe 가 크면 예전과 똑같이 exe 만 본다.
 // exe 가 작으면 옆의 게임 본체 dll 에 DLSS 가 들어 있는지도 본다.
 static int GameSupportsDlssFor(const std::wstring& exe) {
@@ -2920,6 +3033,63 @@ static int FindAntiCheatDrivers(const std::wstring& dir, std::wstring& namesOut,
 //   바이오하자드 RE4 실측 (효과 1023개): 처음 굽기 27.6초 -> 그다음 3.5초.
 //
 // 사용자가 손수 정해 둔 자리는 건드리지 않는다. 임시 폴더를 가리킬 때만 바꾼다.
+// RE 엔진 + REFramework 게임에서 리세이드가 제 설정을 못 찾는 것을 고친다.
+//
+// 2026-10-29 레퀴엠. REFramework 이 들어가면 RE 엔진이 본체를 _storage_ 안에서
+// 돌린다. 리세이드 본체(d3d12.dll)도 거기로 복사돼 거기서 올라오고, **제 옆의**
+// ReShade.ini 를 읽는다. 게임 폴더의 ini 는 쳐다보지도 않는다.
+//
+// 그대로 두면 리세이드가 _storage_ 에 기본값 ini 를 새로 만든다. 실제로 그랬다.
+//   EffectSearchPaths=.\        셰이더를 못 찾는다
+//   KeyOverlay=36               창 여는 키가 Home 으로 돌아간다 (우리는 숫자 8)
+//   KeyEffects=0                F9 가 없어진다
+//   IntermediateCachePath=...\Temp\ReShade   캐시가 다시 임시 폴더로 간다
+// 1.0.3.5 에서 고친 것이 통째로 도로 풀린다.
+//
+// 그래서 두 가지를 한다.
+//   1 게임 폴더 ini 의 검색 경로를 절대 경로로 바꾼다. 기준이 안 흔들린다
+//   2 그 ini 와 프리셋을 _storage_ 에도 넣는다. 폴더가 없으면 만든다
+//     (첫 실행 때 리세이드가 기본값 ini 를 만들기 전에 우리 것이 가 있어야 한다)
+static void FixReShadeForReEngine(const std::wstring& gameDir,
+                                  std::vector<std::wstring>& added) {
+    std::wstring ini = gameDir + L"\\" + RS_INI;
+    if (!FileExists(ini)) { return; }
+
+    // 1 — 상대 경로를 절대 경로로
+    std::string eff = GetIniKey(ini, "GENERAL", "EffectSearchPaths");
+    std::string tex = GetIniKey(ini, "GENERAL", "TextureSearchPaths");
+    std::string pre = GetIniKey(ini, "GENERAL", "PresetPath");
+    std::string base = W2U(gameDir);
+    if (eff.size() > 1 && eff[0] == '.') {
+        SetIniKey(ini, "GENERAL", "EffectSearchPaths", (base + eff.substr(1)).c_str());
+    }
+    if (tex.size() > 1 && tex[0] == '.') {
+        SetIniKey(ini, "GENERAL", "TextureSearchPaths", (base + tex.substr(1)).c_str());
+    }
+    if (pre.size() > 1 && pre[0] == '.') {
+        SetIniKey(ini, "GENERAL", "PresetPath", (base + pre.substr(1)).c_str());
+    }
+    Log(L"  리세이드 검색 경로를 절대 경로로 바꿨습니다. (RE 엔진은 _storage_ 에서 돌아갑니다)");
+
+    // 2 — _storage_ 에도 같은 설정을 둔다
+    std::wstring st = gameDir + L"\\_storage_";
+    if (!DirExists(st)) { CreateDirectoryW(st.c_str(), NULL); }
+    if (!DirExists(st)) {
+        Log(L"  [경고] _storage_ 를 만들지 못했습니다. 리세이드가 셰이더를 못 찾을 수 있습니다.");
+        return;
+    }
+    const wchar_t* pair[] = { RS_INI, L"ReShadePreset.ini" };
+    for (int i = 0; i < 2; i++) {
+        std::wstring src = gameDir + L"\\" + pair[i];
+        if (!FileExists(src)) { continue; }
+        std::wstring dst = st + L"\\" + pair[i];
+        if (CopyFileW(src.c_str(), dst.c_str(), FALSE)) {
+            added.push_back(std::wstring(L"_storage_\\") + pair[i]);
+        }
+    }
+    Log(L"  리세이드 설정을 _storage_ 에도 넣었습니다.");
+}
+
 static void SetReShadeCachePath(const std::wstring& iniPath) {
     if (!FileExists(iniPath)) { return; }
     size_t cut0 = iniPath.find_last_of(L"\\");
@@ -4944,9 +5114,27 @@ static DWORD WINAPI WorkThread(LPVOID param) {
           || gl.find(L"wolfenstein") != std::wstring::npos));
     }
 
-    // REFramework 이 들어 있으면 잠시 꺼 둔다. 같이 올라오면 게임 시작할 때 꺼진다.
-    // 지우지 않고 이름만 바꾼다. 되돌리기가 원래 이름으로 돌려놓는다.
-    {
+    // REFramework — 게임에 따라 정반대로 다룬다. (2026-10-29 레퀴엠에서 알아낸 것)
+    //
+    // 캡콤 안티모딩이 걸린 RE 엔진 게임(레퀴엠·프래그마타)은 REFramework 이 그걸
+    // 뚫어 줘야 우리 것이 돈다. 없으면 **정확히 368프레임에서** 게임이 제 코드 안에서
+    // 죽는다 (C000001D ILLEGAL_INSTRUCTION, 콜스택이 통째로 안 걷힌다).
+    // 자리를 dxgi 에서 winmm 으로 옮겨도 같은 주소에서 죽는다. 후킹 자리 문제가 아니다.
+    // 옵티스케일러 공식 위키의 레퀴엠 쪽에도 REF 이 있어야 한다고 적혀 있다.
+    //
+    // 안 걸린 RE 엔진 게임(RE4·RE2)은 반대다. 같이 올리면 게임을 시작하는 순간
+    // 꺼진다. 그래서 그쪽은 예전처럼 꺼 둔다.
+    bool needRef = NeedsREFramework(gameDir, FindGameExe(gameDir));
+    if (needRef) {
+        Log(L"캡콤 RE 엔진에 안티모딩이 걸린 게임입니다. REFramework 이 있어야 돌아갑니다.");
+        std::wstring di  = gameDir + L"\\dinput8.dll";
+        std::wstring off = gameDir + L"\\dinput8.dll.off";
+        if (!FileExists(di) && FileExists(off)) {
+            if (MoveFileW(off.c_str(), di.c_str())) {
+                Log(L"  지난 판이 꺼 두었던 REFramework 을 되살렸습니다.");
+            }
+        }
+    } else {
         std::wstring di  = gameDir + L"\\dinput8.dll";
         std::wstring off = gameDir + L"\\dinput8.dll.off";
         if (FileExists(di) && IsREFramework(di)) {
@@ -4997,6 +5185,49 @@ static DWORD WINAPI WorkThread(LPVOID param) {
     Log(L"  → 쓸 수 있습니다.");
 
     std::vector<std::wstring> added;
+
+    // 안티모딩이 걸린 RE 엔진 게임에 REFramework 을 넣는다.
+    //
+    // 이미 있으면 함부로 덮지 않는다. 받으신 분 것이 더 새것일 수 있다.
+    // PE 헤더의 링크 시각으로 가린다 — 파일 날짜는 복사하면 바뀌지만 이건 안 바뀐다.
+    // 우리 것이 더 새것일 때만 바꾸고, 바꾸기 전에 원래 것을 백업한다.
+    if (needRef) {
+        std::wstring di   = gameDir + L"\\dinput8.dll";
+        std::wstring mine = SelfDir() + L"\\data\\reframework\\dinput8.dll";
+        if (!FileExists(mine)) {
+            Log(L"[경고] 동봉한 REFramework 을 찾지 못했습니다. (data\\reframework\\dinput8.dll)");
+            Log(L"  받는 곳: https://github.com/praydog/REFramework-nightly/releases");
+        } else if (!FileExists(di)) {
+            if (CopyFileW(mine.c_str(), di.c_str(), FALSE)) {
+                added.push_back(L"dinput8.dll");
+                Log(L"  REFramework 을 넣었습니다. (dinput8.dll) 만드신 분은 praydog 님입니다.");
+            } else {
+                Log(L"[경고] REFramework 을 넣지 못했습니다. 게임이 켜지다 꺼질 수 있습니다.");
+            }
+        } else if (!IsREFramework(di)) {
+            Log(L"  dinput8.dll 이 이미 있는데 REFramework 이 아닙니다. 건드리지 않습니다.");
+            Log(L"  다른 모드가 쓰는 파일로 보입니다. 게임이 안 켜지면 그것부터 빼 보십시오.");
+        } else {
+            DWORD theirs = PeLinkTime(di), ours = PeLinkTime(mine);
+            if (ours > theirs && theirs != 0) {
+                std::wstring bak = gameDir + L"\\" + BACKUP_DIR + L"\\dinput8.dll";
+                CreateDirectoryW((gameDir + L"\\" + BACKUP_DIR).c_str(), NULL);
+                if (CopyFileW(di.c_str(), bak.c_str(), FALSE)
+                    && CopyFileW(mine.c_str(), di.c_str(), FALSE)) {
+                    movedAside.push_back(L"dinput8.dll");
+                    Log(L"  갖고 계시던 REFramework 이 더 오래된 판이라 동봉한 것으로 바꿨습니다.");
+                    Log(L"  원래 파일은 백업했습니다. [되돌리기] 를 누르면 돌려놓습니다.");
+                } else {
+                    Log(L"  REFramework 을 바꾸지 못해 그대로 둡니다.");
+                }
+            } else {
+                Log(L"  REFramework 이 이미 있습니다. 그대로 둡니다.");
+            }
+        }
+        Log(L"  게임이 업데이트된 뒤 안 켜지면 REFramework 을 새로 받으십시오.");
+        Log(L"  https://github.com/praydog/REFramework-nightly/releases");
+        SetREFrameworkMenuKey(gameDir);
+    }
 
     // DLSS 가 없는 게임은 Feeder 가 NGX 호출을 만들고 RenoDX 애드온이 신경망 패스를 건다.
     // 이 경로에서는 OptiScaler 를 넣지 않는다. D3D12 브리지가 둘이 되어 힙이 깨진다.
@@ -5359,6 +5590,10 @@ static DWORD WINAPI WorkThread(LPVOID param) {
             Log(L"  나중에 파일을 받으신 뒤 [DLSS 5 설치]를 다시 누르면 자동으로 켜집니다.");
         }
     }
+
+    // RE 엔진 게임은 리세이드 설정을 한 번 더 손본다. 캐시 자리까지 다 잡힌 뒤라야
+    // 그 값까지 같이 _storage_ 로 넘어간다. 그래서 설치 기록을 쓰기 직전이다.
+    if (needRef) { FixReShadeForReEngine(gameDir, added); }
 
     std::string man;
     for (size_t i = 0; i < movedAside.size(); i++) man += "MOVED " + W2U(movedAside[i]) + "\r\n";
